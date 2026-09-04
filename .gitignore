@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints
+.pytest_cache/
+
+# Snakemake
+.snakemake/
+
+# Conda
+env/
+venv/
+.conda/
+
+# REHAB project-specific: large/generated data, never tracked in git
+data/
+results/
+status/
+tmp/
+containers/*.sif
+logs/
+
+# Misc
+localDB*
+**localDB**
+*_orig*
+*.done
+*.Rhistory
+.RData

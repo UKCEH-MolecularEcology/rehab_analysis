@@ -1,0 +1,203 @@
+# Pipeline for assembly and taxonomic analyses of SOC-D data
+#
+# Example call: snakemake -s workflow/Snakefile --configfile config/config.yaml --use-conda --conda-prefix ${CONDA_PREFIX}/pipeline --cores 1 -rpn
+
+##############################
+# MODULES
+import os, re
+import glob
+import pandas as pd
+
+# importing specific scripts for parsing etc.
+# from scripts.utils import find_fast5, assembler_pairs
+
+##############################
+# CONFIG
+# can be overwritten by using --configfile <path to config> when calling snakemake
+# configfile: "config/config.yaml"
+
+include:
+    "rules/init.smk"
+
+# print("no basecalling: {}".format(NO_BASECALLING))
+# print(INPUT_LINKS)
+
+
+##############################
+# TARGETS & RULES
+
+# List of (main) targets to be created
+TARGETS = []
+
+# Include rules and add targets based on the config file
+# include:
+#    "rules/setup.smk"
+
+# TARGETS.append("status/prepare_input.done") # TEST
+
+# Human filtering & Preprocessing
+if "preprocessing" in STEPS:
+    include:
+        "rules/preprocessing.smk"
+    TARGETS += [
+        "status/preprocessing.done"
+    ]
+
+# Kraken2+BRACKEN
+if "taxonomy" in STEPS:
+    include:
+        "rules/taxonomy.smk"
+    include:
+        "rules/singlem.smk"
+    TARGETS += [
+        "status/taxonomy.done",
+        "status/singlem.done"
+    ]
+
+# Assembly
+if "assembly" in STEPS:
+    include:
+        "rules/assembly.smk"
+    TARGETS += [
+        "status/assembly.done"
+    ]
+
+# Contig taxonomy
+if "contig_taxonomy" in STEPS:
+    include:
+        "rules/contig_taxonomy.smk"
+    TARGETS += [
+        "status/contig_taxonomy.done"
+    ]
+
+# SYLPH
+if "sylph" in STEPS:
+    include:
+        "rules/sylph.smk"
+    TARGETS += [
+        "status/sylph.done"
+    ]
+
+# Kaiju
+if "kaiju" in STEPS:
+    include:
+        "rules/kaiju.smk"
+    TARGETS += [
+        "status/kaiju.done"
+    ]
+
+# Co-Assembly
+if "coassembly" in STEPS:
+    include:
+        "rules/coassembly.smk"
+    TARGETS += [
+        "status/coassembly.done"
+    ]
+
+# Annotation
+if "annotation" in STEPS:
+    include:
+        "rules/annotation.smk"
+    TARGETS += [
+        "status/annotation.done"
+    ]
+
+# AMR
+if "amr" in STEPS:
+    include:
+        "rules/amr.smk"
+    TARGETS += [
+        "status/amr.done"
+    ]
+
+# Eukaryotes
+if "eukaryotes" in STEPS:
+    include:
+        "rules/eukaryotes.smk"
+    TARGETS += [
+        "status/eukaryotes.done"
+    ]
+
+# Clustering
+if "cluster" in STEPS:
+    include:
+        "rules/cluster.smk"
+    TARGETS += [
+        "status/cluster.done"
+    ]
+
+# Binning
+if "binning" in STEPS:
+    include:
+        "rules/cluster.smk"
+    include:
+        "rules/binning.smk"
+    include:
+        "rules/dereplicate.smk"
+    include:
+        "rules/bin_taxqual.smk"
+    include:
+        "rules/semibin.smk"
+    TARGETS += [
+        "status/cluster.done", 
+        "status/binning.done",
+        "status/semibin.done",
+        "status/bin_taxqual.done"
+    ]
+
+# Coverage
+if "coverage" in STEPS:
+    include:
+        "rules/coverage.smk"
+    include:
+        "rules/bin_coverage.smk"
+    TARGETS += [
+        "status/coverage.done",
+        "status/bin_coverage.done"
+    ]
+
+# Functions
+if "functions" in STEPS:
+    include:
+        "rules/functions.smk"
+    include:
+        "rules/eggnog.smk"
+    TARGETS += [
+        "status/functions.done",
+        "status/eggnog.done"
+    ]
+
+if "seed" in STEPS:
+    include:
+        "rules/seed.smk"
+    TARGETS += [
+        "status/seed.done"
+    ]
+
+
+# Traits
+if "traits" in STEPS:
+    include:
+        "rules/microtrait.smk"
+    include:
+        "rules/metathermo.smk"
+    TARGETS += [
+        "status/microtrait.done",
+        "status/metathermo.done"
+    ]
+
+# antiSMASH
+if "antismash" in STEPS:
+    include:
+        "rules/antismash.smk"
+    TARGETS += [
+        "status/antismash.done"
+    ]
+
+# No targets
+if len(TARGETS) == 0:
+    raise Exception('You are not serious. Nothing to be done? Really?')
+
+rule all:
+    input:
+        TARGETS
