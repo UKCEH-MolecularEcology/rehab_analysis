@@ -31,3 +31,4 @@ localDB*
 *.done
 *.Rhistory
 .RData
+.claude/
