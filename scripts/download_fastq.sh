@@ -9,7 +9,8 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_LIST="$1"
-OUTDIR="$2"
+mkdir -p "$2"
+OUTDIR="$(cd "$2" && pwd)"
 JOBS="${3:-16}"
 
 TMPDIR="${REPO_DIR}/tmp"

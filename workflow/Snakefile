@@ -110,6 +110,15 @@ if "amr" in STEPS:
         "status/amr.done"
     ]
 
+# BGC / AMR markers / growth rate (per-sample assembly; adapted from SOCD's
+# singlem_bgc_Snakefile_no_metadata)
+if "bgc_amr" in STEPS:
+    include:
+        "rules/bgc_amr.smk"
+    TARGETS += [
+        "status/bgc_amr.done"
+    ]
+
 # Eukaryotes
 if "eukaryotes" in STEPS:
     include:

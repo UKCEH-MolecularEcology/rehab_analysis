@@ -7,7 +7,7 @@
 #
 # Start minimal and extend once the data acquisition step (see scripts/) has
 # produced config/samples.tsv.
-steps: ["preprocessing", "taxonomy", "assembly", "amr"]
+steps: ["preprocessing", "taxonomy", "assembly", "amr", "bgc_amr"]
 
 ############################################################
 # INPUT
@@ -188,3 +188,41 @@ sylph:
   fundb_url: "http://faust.compbio.cs.cmu.edu/sylph-stuff/fungi-refseq-2024-07-25-c200-v0.3.syldb"
 
 kegg_ids: "ko00521|ko00522|ko00523|ko00311|ko02611|ko01055|ko01051|ko00522"
+
+############################################################
+# BGC / AMR-marker / growth-rate step (workflow/rules/bgc_amr.smk)
+# Adapted from SOCD's singlem_bgc_Snakefile_no_metadata. GECCO, BiG-SCAPE,
+# and antiSMASH reuse pre-existing named conda envs on this host rather than
+# being rebuilt via --use-conda.
+
+# Curated KEGG KO -> antibiotic biosynthesis/resistance marker reference
+abx_bgc:
+  kegg_ref: "/prj/DECODE/rehab/resources/kegg_abx_bgc.txt"
+
+gecco:
+  bin: "/home/susbus/miniforge3/envs/gecco/bin/gecco"
+
+seqkit:
+  bin: "/home/susbus/miniforge3/bin/seqkit"
+
+# antiSMASH run directly on per-sample assemblies (contrast with the
+# rules/antismash.smk MAG-level run, which uses its own conda env)
+antismash_assembly:
+  bin: "/home/susbus/miniforge3/envs/antismash/bin/antismash"
+  db: "/hdd0/susbus/databases"
+  threads: 12
+  # Minimum contig length fed to antiSMASH -- a real multi-gene BGC can't fit
+  # intact on much shorter fragments, but hmmsearch cost scales with the
+  # genes annotated on them regardless. See bgc_amr.smk for the SOCD
+  # benchmarking notes this value is based on.
+  min_contig_len: 2500
+
+bigscape:
+  bin: "/home/susbus/miniforge3/envs/bigscape/bin/bigscape"
+  pfam_db: "/hdd0/susbus/databases/pfam/35.0/Pfam-A.hmm"
+  threads: 64
+
+# gRodon2 has no existing conda/native install on this host; runs via
+# Singularity (image + temp files under work_dir/containers and work_dir/tmp)
+grodon:
+  image: "shengwei/grodon2:latest"

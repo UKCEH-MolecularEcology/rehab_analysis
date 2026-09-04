@@ -84,14 +84,41 @@ No SLURM on this host — run locally:
 assembly, AMR, binning, ...). See `workflow/rules/*.smk` for the full set mirrored
 from `metag_analyses`.
 
+## BGC / AMR-marker / growth-rate step (`bgc_amr`)
+
+Adapted from the SOCD project's `singlem_bgc_Snakefile_no_metadata`
+(`/prj/DECODE/socd/results/`). Runs per-sample (not per-MAG, unlike
+`rules/antismash.smk`), scoped to samples with eggNOG + coverage already
+computed:
+
+- **ABX/KEGG markers** — cross-references eggNOG KO annotations against a
+  curated antibiotic biosynthesis/resistance reference
+  (`resources/kegg_abx_bgc.txt`), joined with gene coverage. Complements
+  (does not replace) `rules/eggnog.smk`'s pathway-keyword-based
+  `identify_abx_biosynthesis`.
+- **BGC prediction** — GECCO + antiSMASH (contig-length-filtered,
+  `--genefinding-gff3` reusing existing Prodigal calls, `--minimal
+  --cb-knownclusters` only) on each sample's assembly.
+- **BGC clustering** — BiG-SCAPE 2 across all samples' predicted regions.
+- **Growth rate** — gRodon2 (codon usage bias → average maximal growth
+  rate), via a Singularity image (no conda recipe covers Bioconductor +
+  CRAN together).
+
+GECCO, antiSMASH, and BiG-SCAPE reuse the pre-existing named conda
+environments on this host (`/home/susbus/miniforge3/envs/{gecco,bigscape,
+antismash}`) rather than being rebuilt — see `config/config.yaml`'s
+`gecco`/`antismash_assembly`/`bigscape` sections to repoint them elsewhere.
+
 ## Repo layout
 
 ```
 config/      config.yaml, samples.tsv (generated), schema-validated
 data/        ENA metadata + raw/concatenated FASTQ (gitignored, huge)
 metadata/    REHAB sample tracking + chemistry data (tracked in git)
+resources/   pipeline reference data (e.g. kegg_abx_bgc.txt), tracked in git
 scripts/     download / concat / manifest / pipeline-runner scripts
-workflow/    Snakefile, rules/, envs/, scripts/ (mirrored from metag_analyses)
+workflow/    Snakefile, rules/, envs/, scripts/ (mirrored from metag_analyses,
+             plus rules/bgc_amr.smk adapted from the SOCD project)
 schemas/     config & sample-sheet JSON schemas
 containers/  Singularity images for newly-installed tools (gitignored)
 tmp/         scratch space for all tool/Singularity/conda temp files (gitignored)

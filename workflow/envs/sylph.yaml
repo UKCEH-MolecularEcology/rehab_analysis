@@ -1,0 +1,4 @@
+channels:
+ - bioconda
+dependencies:
+ - sylph=0.6.1

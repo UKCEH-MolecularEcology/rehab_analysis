@@ -1,0 +1,18 @@
+kegg	type	function	classification	group
+K04126	Bio	Isopenicillin-N synthase (PCBC)	Beta-Lactam	Penicillins / Cephalosporins
+K01467	Res	Beta-lactamase (bla)	Beta-Lactam	Penicillin Resistance
+K05551	Bio	Ketosynthase (KSα)	Polyketide (Type II)	Tetracyclines
+K19075	Res	Tetracycline inactivation enzyme	Polyketide (Type II)	Tetracycline Resistance
+K10817	Bio	6-deoxyerythronolide-B synthase	Polyketide (Type I)	Macrolides (Erythromycin)
+K00593	Res	23S rRNA methyltransferase (Erm)	Ribosomal Target	MLS Resistance
+K16428	Bio	Chloroeremomycin synthetase (cepA)	NRPS	Vancomycin / Glycopeptides
+K07668	Res	VanS (sensor kinase)	Cell Wall	Vancomycin Resistance
+K00010	Bio	myo-inositol 2-dehydrogenase	Aminoglycoside	Streptomycin
+K00286	Res	ANT(6) Nucleutidyltransferase	Aminoglycoside	Streptomycin Resistance
+K23999	Bio	PEP phosphomutase	Phosphonate	Fosfomycin
+K12903	Bio	Fosfomycin epoxidase	Phosphonate	Fosfomycin
+K16093	Bio	Bacitracin synthase 1 (bacA)	NRPS	Bacitracin
+K08160	Res	MFS antibiotic efflux pump	Efflux	Multi-drug Resistance (MDR)
+K18138	Res	RND antibiotic efflux pump	Efflux	Multi-drug Resistance (MDR)
+K01103	Bio	4-amino-4-deoxychorismate synthase	Aromatic	Chloramphenicol
+K00287	Res	Dihydrofolate reductase (dfr)	Folate Pathway	Trimethoprim Resistance
