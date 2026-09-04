@@ -30,7 +30,7 @@ rule megahit:
     input:
         sr1=os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R1.fq"),
         sr2=os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R2.fq"),
-        barrier="status/preprocessing.done"
+        barrier="status/reads_ready.done"
     output:
         os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta")
     conda:

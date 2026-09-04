@@ -114,6 +114,19 @@ rule bam_to_fastq:
     shell:
         "(date && bamToFastq -i {input} -fq {output.r1} -fq2 {output.r2} && date) &> {log}"
 
+############################################
+# Narrow barrier: all samples' final preprocessed reads exist (trimmed +
+# host-filtered), WITHOUT waiting on status/preprocessing.done's QC steps.
+# megahit depends on this rather than status/preprocessing.done because
+# that status also requires analysis_quast, which itself runs on the
+# assembly output -- making status/preprocessing.done a dependency of
+# assembly AND (transitively) a dependent of it, i.e. a cycle.
+rule reads_ready:
+    input:
+        expand(os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R{rid}.fq"), sid=SAMPLES.index, rid=["1", "2"])
+    output:
+        touch("status/reads_ready.done")
+
 # Running QC
 rule fastqc:
     input:
