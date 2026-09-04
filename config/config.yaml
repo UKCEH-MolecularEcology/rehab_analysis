@@ -75,7 +75,12 @@ bracken:
 
 singlem:
   threads: 36
-  db: "S3.2.1.GTDB_r214.metapackage_20231006.smpkg.zb"
+  # S3.2.1 (2023) is incompatible with the installed SingleM (5.4.0) --
+  # matches what /prj/DECODE/socd/results/ags_agc/ags_agc_snakefile.smk
+  # found and fixed. Use the same accessible copy (the "official" path at
+  # /hdd0/susbus/databases/singlem/S6.5.0... has a payload_directory with
+  # no group read access).
+  db: "/hdd0/susbus/databases/singlem/susbus_copies/S6.5.0.GTDB_r232.metapackage_20260319.smpkg.zb"
 
 # MEGAHIT
 megahit:

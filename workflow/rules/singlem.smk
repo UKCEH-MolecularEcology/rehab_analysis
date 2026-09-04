@@ -55,12 +55,20 @@ rule run_singlem:
     threads:
         config["singlem"]["threads"]
     params:
-        db=os.path.join(DB_DIR, "singlem")
+        metapackage=config["singlem"]["db"]
     message:
         "Running singlem on: {wildcards.sid}"
     shell:
-        "(date && export SINGLEM_METAPACKAGE_PATH={params.db}/{config[singlem][db]} && "
-        "singlem pipe -1 {input[0]} -2 {input[1]} -p {output.profile} --otu-table {output.table} --threads {threads} && "
+        # --metapackage (not the SINGLEM_METAPACKAGE_PATH env var) is required:
+        # the env var routes through singlem's "acquire default backpack"
+        # path, which hard-enforces an exact metapackage schema version match
+        # against this installed SingleM/zenodo_backpack build (5.4.0) --
+        # rejecting both the old S3.2.1 db and this newer S6.5.0 one. The
+        # --metapackage flag uses the given metapackage directly, no version
+        # gate. See config["singlem"]["db"]'s comment for why this specific
+        # metapackage copy.
+        "(date && "
+        "singlem pipe -1 {input[0]} -2 {input[1]} -p {output.profile} --otu-table {output.table} --threads {threads} --metapackage {params.metapackage} && "
         "date) &> >(tee {log})"
 
 rule summarise_singlem:
