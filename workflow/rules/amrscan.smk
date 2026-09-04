@@ -32,7 +32,7 @@ rule amrscan:
 
 
 ############################################
-RESSCAN_SCRIPT = os.path.join(SUBMODULES, "snake_amrscan", "submodules", "resscan", "resscan", "resscan.py")
+RESSCAN_ROOT = os.path.join(SUBMODULES, "snake_amrscan", "submodules", "resscan")
 AMRSCAN_MERGE_SCRIPT = os.path.join(SUBMODULES, "snake_amrscan", "scripts", "merge_amrscan_tables.py")
 
 
@@ -51,7 +51,7 @@ rule run_amrscan:
     wildcard_constraints:
         sid="|".join(SAMPLES.index)
     params:
-        script=RESSCAN_SCRIPT,
+        resscan_root=RESSCAN_ROOT,
         db=config["amrscan"]["db"],
         python_bin=config["amrscan"]["python_bin"],
         env_bin=config["amrscan"]["env_bin"],
@@ -60,8 +60,8 @@ rule run_amrscan:
     shell:
         """
         mkdir -p "$(dirname {output.varscan})" "$(dirname {log})"
-        (date && cd "$(dirname {params.script})/.." && \
-        PATH="{params.env_bin}:$PATH" {params.python_bin} {params.script} \
+        (date && cd "{params.resscan_root}" && \
+        PATH="{params.env_bin}:$PATH" PYTHONPATH="{params.resscan_root}" {params.python_bin} -m resscan.resscan \
             -i {input.r1},{input.r2} --card-db-dir {params.db} \
             -o "$(dirname {output.varscan})" -t {threads} --overwrite && \
         date) &> {log}
