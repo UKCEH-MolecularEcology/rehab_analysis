@@ -23,9 +23,10 @@ rule taxqual:
 
 ############################################
 rule collect_bins:
+    # semibin input disabled for now (2026-09-04), alongside rules/semibin.smk
+    # not being included -- see workflow/Snakefile's "binning" STEPS block.
     input:
         all=os.path.join(RESULTS_DIR, "bins/finalbins"),
-        semibin=os.path.join(RESULTS_DIR, "bins/semibin/finalbins"),
         concoct=os.path.join(RESULTS_DIR,"bins/concoct_bins")
     output:
         bins=directory(os.path.join(RESULTS_DIR, "bins/all_finalbins"))
@@ -34,7 +35,6 @@ rule collect_bins:
     shell:
         "(date && mkdir {output.bins} && "
         "cp -v {input.all}/*.fa {output.bins}/. && "
-        "cp -v {input.semibin}/*.fa {output.bins}/. && "
         "cp -v {input.concoct}/*.fa {output.bins}/. && "
         "date) &> >(tee {log})"
 

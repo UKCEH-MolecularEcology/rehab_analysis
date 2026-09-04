@@ -12,7 +12,8 @@ Purpose: To prepare assemblies for binning
 rule binning:
     input:
         os.path.join(RESULTS_DIR, "bins/metabat"),
-        os.path.join(RESULTS_DIR, "bins/metabinner_cov.txt"),
+        # metabinner disabled for now (2026-09-04)
+        # os.path.join(RESULTS_DIR, "bins/metabinner_cov.txt"),
         os.path.join(RESULTS_DIR, "bins/concoct/concoct_clustering_merged.csv"),
         os.path.join(RESULTS_DIR, "bins/concoct_bins")
 #        os.path.join(RESULTS_DIR, "bins/semibin")

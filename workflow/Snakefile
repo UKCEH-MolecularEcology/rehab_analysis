@@ -153,12 +153,14 @@ if "binning" in STEPS:
         "rules/dereplicate.smk"
     include:
         "rules/bin_taxqual.smk"
-    include:
-        "rules/semibin.smk"
+    # semibin disabled for now (2026-09-04) -- see collect_bins in
+    # bin_taxqual.smk, which no longer requires its output either.
+    # include:
+    #     "rules/semibin.smk"
     TARGETS += [
-        "status/cluster.done", 
+        "status/cluster.done",
         "status/binning.done",
-        "status/semibin.done",
+        # "status/semibin.done",
         "status/bin_taxqual.done"
     ]
 
