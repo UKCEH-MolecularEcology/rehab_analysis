@@ -95,7 +95,7 @@ rule ass_mmseqs2:
 # Concatetnating the non-redundant assemblies for binning
 rule cat_ass_mmseqs2:
     input:
-        expand(os.path.join(RESULTS_DIR, "mmseqs/{sid}/{sid}_modified.fasta"), sid=SAMPLES.index) # expand(os.path.join(RESULTS_DIR, "mmseqs/{sid}/{sid}_rep_seq.fasta"), sid=SAMPLES.index)
+        expand(os.path.join(RESULTS_DIR, "mmseqs/{sid}/{sid}_rep_seq.fasta"), sid=SAMPLES.index)
     output:
         os.path.join(RESULTS_DIR, "assembly/cat_assembly.fasta")
     log:

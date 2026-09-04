@@ -123,7 +123,7 @@ rule unzip_semibin:
         "Unzipping the fasta files"
     shell:
         "(date && cd {input} && "
-        """find . -type f -name "*.fa.gz" -exec sh -c 'gunzip -c "$1" > "${1%.gz}"' _ {} \\; && """
+        """find . -type f -name "*.fa.gz" -exec sh -c 'gunzip -c "$1" > "${{1%.gz}}"' _ {{}} \\; && """
         "touch {output.dummy} && date) 2> {log.err} > {log.out}"
 
 rule semibin_checkm:

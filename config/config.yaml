@@ -7,7 +7,7 @@
 #
 # Start minimal and extend once the data acquisition step (see scripts/) has
 # produced config/samples.tsv.
-steps: ["preprocessing", "taxonomy", "assembly", "amr", "amrscan", "bgc_amr"]
+steps: ["preprocessing", "taxonomy", "assembly", "annotation", "coverage", "functions", "amr", "amrscan", "bgc_amr", "binning", "seed"]
 
 ############################################################
 # INPUT

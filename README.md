@@ -80,9 +80,24 @@ No SLURM on this host — run locally:
 ./scripts/run_pipeline.sh      # full run
 ```
 
-`config/config.yaml` controls which pipeline `steps` run (preprocessing, taxonomy,
-assembly, AMR, binning, ...). See `workflow/rules/*.smk` for the full set mirrored
-from `metag_analyses`.
+`config/config.yaml` controls which pipeline `steps` run. Currently enabled:
+`preprocessing`, `taxonomy`, `assembly`, `annotation` (Prodigal), `coverage`,
+`functions` (eggNOG + KEGG antibiotic-biosynthesis marker search + MagicLamp),
+`amr` (RGI), `amrscan`, `bgc_amr`, `binning` (mmseqs2 dedup → MetaBAT2 /
+CONCOCT / MetaBinner / SemiBin → dRep → GTDB-Tk/CheckM2 quality), `seed`. See
+`workflow/rules/*.smk` for the full set mirrored from `metag_analyses`; the
+full DAG (4,772 jobs across all 147 samples at time of writing) was verified
+with `snakemake -n` before enabling.
+
+Two pre-existing bugs in the mirrored `metag_analyses` rules were fixed here
+(both blocked `binning` outright, not something introduced by this repo):
+- `rules/cluster.smk`'s `cat_ass_mmseqs2` referenced a non-existent path
+  (`mmseqs/{sid}/{sid}_modified.fasta`); fixed to use `ass_mmseqs2`'s real
+  output (`mmseqs/{sid}/{sid}_rep_seq.fasta` — the correct path was already
+  present as a dead commented-out alternative on the same line).
+- `rules/semibin.smk`'s `unzip_semibin` shell command had unescaped
+  `${1%.gz}` / `{}` (find's placeholder), which Snakemake's shell
+  `.format()` misinterprets; escaped as `${{1%.gz}}` / `{{}}`.
 
 ## Read-based AMR detection (`amrscan`)
 
