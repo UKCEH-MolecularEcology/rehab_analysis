@@ -24,8 +24,12 @@ rule cluster:
 ############################################
 # Adding filename to assemblies for easy tracking
 rule modify_fasta:
+    # barrier: don't start for ANY sample until gene calling (Prodigal) has
+    # finished for ALL samples -- see megahit's barrier comment in
+    # rules/assembly.smk for the phase-ordering rationale.
     input:
-        os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta")
+        fasta=os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta"),
+        barrier="status/annotation.done"
     output:
         os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}_modified.fasta")
     log:
@@ -33,7 +37,7 @@ rule modify_fasta:
     message:
         "Adding filename to fasta headers: {wildcards.sid}"
     shell:
-        """(date && filename={wildcards.sid} && awk -v filename="$name" '/^>/ {{ sub(">", ">" filename ":"); }} 1' {input} > {output} && date) &> >(tee {log})"""
+        """(date && filename={wildcards.sid} && awk -v filename="$name" '/^>/ {{ sub(">", ">" filename ":"); }} 1' {input.fasta} > {output} && date) &> >(tee {log})"""
 
 ## Concatetnating the assemblies for binning 
 #rule ass_cat:

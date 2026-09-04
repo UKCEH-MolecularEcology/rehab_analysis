@@ -17,5 +17,6 @@ conda activate snakemake
 
 snakemake -s "${REPO_DIR}/workflow/Snakefile" \
     --configfile "${REPO_DIR}/config/config.yaml" \
-    --use-conda --conda-prefix "${REPO_DIR}/tmp/conda_envs" \
+    --use-conda --conda-prefix /prj/DECODE/ea_biofilm_results/conda_envs --conda-frontend conda \
+    --rerun-incomplete \
     --cores "${CORES}" -rp "$@"

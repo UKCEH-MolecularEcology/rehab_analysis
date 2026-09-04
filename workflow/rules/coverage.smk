@@ -30,8 +30,12 @@ localrules: gene_depth, contig_length, contig_gene_link
 ############################################
 # Mapping reads to contigs
 rule mapping_index:
+    # barrier: don't start for ANY sample until gene calling (Prodigal) has
+    # finished for ALL samples -- see megahit's barrier comment in
+    # rules/assembly.smk for the phase-ordering rationale.
     input:
-        FASTA=os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta")
+        FASTA=os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta"),
+        barrier="status/annotation.done"
     output:
         expand(os.path.join(RESULTS_DIR, "bam/{{sid}}/{{sid}}.{ext}"), ext=BWA_IDX_EXT)
     conda:
@@ -45,7 +49,7 @@ rule mapping_index:
     message:
         "Indexing assembly from {wildcards.sid}"
     shell:
-        "(date && bwa index {input} -p {params.idx_prefix} && date) &> {log}"
+        "(date && bwa index {input.FASTA} -p {params.idx_prefix} && date) &> {log}"
 
 rule mapping:
     input:

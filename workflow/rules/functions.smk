@@ -40,7 +40,11 @@ rule install_magiclamp:
 rule magiclamp:
     input:
         contigs=os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta"),
-        installed=os.path.join(RESULTS_DIR, "magiclamp/magiclamp.installed")
+        installed=os.path.join(RESULTS_DIR, "magiclamp/magiclamp.installed"),
+        # barrier: don't start for ANY sample until gene calling (Prodigal)
+        # has finished for ALL samples -- see megahit's barrier comment in
+        # rules/assembly.smk for the phase-ordering rationale.
+        barrier="status/annotation.done"
     output:
         directory(os.path.join(RESULTS_DIR, "magiclamp/{sid}/lithogenie_output"))
     params:

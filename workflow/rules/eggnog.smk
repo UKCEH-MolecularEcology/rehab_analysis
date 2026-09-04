@@ -42,9 +42,13 @@ rule download_eggnogDB:
 
 # EGGNOG mapping to annotations
 rule emapper:
+    # barrier: don't start for ANY sample until gene calling (Prodigal) has
+    # finished for ALL samples -- see megahit's barrier comment in
+    # rules/assembly.smk for the phase-ordering rationale.
     input:
         dummy=os.path.join(RESULTS_DIR, "eggnog/db_download.done"),
-        fasta=os.path.join(RESULTS_DIR, "prodigal/{sid}/{sid}.faa")
+        fasta=os.path.join(RESULTS_DIR, "prodigal/{sid}/{sid}.faa"),
+        barrier="status/annotation.done"
     output:
         os.path.join(RESULTS_DIR, "eggnog/{sid}/{sid}.emapper.seed_orthologs")
     conda:

@@ -23,9 +23,14 @@ rule assembly:
 ############################################
 # Assembling the reads
 rule megahit:
+    # barrier: don't start assembly for ANY sample until preprocessing has
+    # finished for ALL samples (requested phase ordering: trimming -> assembly
+    # -> gene calling -> antismash/others, rather than Snakemake's default of
+    # interleaving stages across samples).
     input:
         sr1=os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R1.fq"),
-        sr2=os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R2.fq")
+        sr2=os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R2.fq"),
+        barrier="status/preprocessing.done"
     output:
         os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta")
     conda:

@@ -27,19 +27,20 @@ import json
 import re
 
 ############################################
-# Scope to samples with complete AMR input (eggNOG annotations + gene
-# coverage), like the SOCD original -- BGC prediction on a sample that can't
-# get an AMR result would leave nothing to compare it against.
-def _has_abx_input(sid):
-    annot = os.path.join(RESULTS_DIR, "eggnog", sid, f"{sid}.emapper.annotations")
-    cov = os.path.join(RESULTS_DIR, "coverage", sid, f"{sid}_gene_coverage.txt")
-    return os.path.isfile(annot) and os.path.isfile(cov)
-
-BGC_SAMPLES = [s for s in SAMPLES.index if _has_abx_input(s)]
-_BGC_SKIPPED = [s for s in SAMPLES.index if s not in BGC_SAMPLES]
-if _BGC_SKIPPED:
-    print(f"[bgc_amr] skipping {len(_BGC_SKIPPED)} sample(s) missing eggNOG annotations and/or gene coverage: {_BGC_SKIPPED}")
-
+# NOTE: samples are NOT pre-filtered by whether eggNOG/coverage output
+# already exists on disk (a prior version did this via a parse-time
+# os.path.isfile check, copied from the SOCD original -- but that project
+# ran this step in a separate snakemake invocation *after* eggNOG/coverage
+# were already fully computed by an earlier pipeline run, so the check
+# meant something there). Since this repo runs the whole pipeline
+# (assembly -> annotation -> eggnog/coverage -> bgc_amr) in a single
+# invocation, a parse-time filesystem check always sees an empty result at
+# the start -- which made every expand(..., sid=SAMPLES.index) resolve to an
+# empty input list, so Snakemake treated those rules as having no
+# prerequisites and ran them immediately, before antiSMASH/eggNOG/coverage
+# had produced anything. Using SAMPLES.index directly lets Snakemake's own
+# DAG resolution require the real per-sample eggnog/coverage/antismash
+# outputs as normal rule inputs, enforcing the correct order.
 BGC_OUTDIR = os.path.join(RESULTS_DIR, "amr_bgc")
 
 GECCO_BIN = config["gecco"]["bin"]
@@ -62,7 +63,7 @@ GRODON_SCRIPT = os.path.join(GRODON_DIR, "scripts", "run_gRodon.R")
 rule bgc_amr:
     input:
         os.path.join(BGC_OUTDIR, "abx_bgc", "abx_bgc_master_results.tsv"),
-        expand(os.path.join(BGC_OUTDIR, "gecco", "{sid}", "{sid}.genes.tsv"), sid=BGC_SAMPLES),
+        expand(os.path.join(BGC_OUTDIR, "gecco", "{sid}", "{sid}.genes.tsv"), sid=SAMPLES.index),
         os.path.join(BGC_OUTDIR, "bigscape_results"),
         os.path.join(BGC_OUTDIR, "antismash_summaries", "antismash_master_results.tsv"),
         os.path.join(GRODON_DIR, "growth_rate_master_results.tsv")
@@ -86,7 +87,7 @@ rule summarise_sample_abx:
     output:
         tsv=temp(os.path.join(BGC_OUTDIR, "abx_bgc", "{sid}_summary.tsv"))
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     shell:
         """
         mkdir -p "$(dirname {output.tsv})"
@@ -121,7 +122,7 @@ rule summarise_sample_abx:
 rule master_abx_summary:
     """Merge all per-sample ABX summaries and add a header."""
     input:
-        expand(os.path.join(BGC_OUTDIR, "abx_bgc", "{sid}_summary.tsv"), sid=BGC_SAMPLES)
+        expand(os.path.join(BGC_OUTDIR, "abx_bgc", "{sid}_summary.tsv"), sid=SAMPLES.index)
     output:
         os.path.join(BGC_OUTDIR, "abx_bgc", "abx_bgc_master_results.tsv")
     shell:
@@ -135,15 +136,20 @@ rule master_abx_summary:
 # 2. BGC Prediction (GECCO + antiSMASH, per-sample assembly)
 ############################################
 rule run_gecco:
-    """Predict BGCs with GECCO."""
+    """Predict BGCs with GECCO.
+
+    barrier: don't start for ANY sample until gene calling (Prodigal) has
+    finished for ALL samples -- see megahit's barrier comment in
+    rules/assembly.smk for the phase-ordering rationale."""
     input:
-        fasta=os.path.join(RESULTS_DIR, "assembly", "{sid}", "{sid}.fasta")
+        fasta=os.path.join(RESULTS_DIR, "assembly", "{sid}", "{sid}.fasta"),
+        barrier="status/annotation.done"
     output:
         os.path.join(BGC_OUTDIR, "gecco", "{sid}", "{sid}.genes.tsv")
     log:
         os.path.join(RESULTS_DIR, "logs", "gecco", "{sid}_gecco.log")
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     params:
         bin=GECCO_BIN
     shell:
@@ -156,13 +162,17 @@ rule filter_assembly_min_len:
     """Drop contigs shorter than ANTISMASH_ASSEMBLY_MIN_CONTIG_LEN before
     antiSMASH ever sees them -- a real multi-gene BGC can't fit intact on a
     much shorter contig, but antiSMASH's hmmsearch cost scales with the
-    genes annotated on them regardless."""
+    genes annotated on them regardless.
+
+    barrier: don't start for ANY sample until gene calling (Prodigal) has
+    finished for ALL samples."""
     input:
-        fasta=os.path.join(RESULTS_DIR, "assembly", "{sid}", "{sid}.fasta")
+        fasta=os.path.join(RESULTS_DIR, "assembly", "{sid}", "{sid}.fasta"),
+        barrier="status/annotation.done"
     output:
         fasta=os.path.join(BGC_OUTDIR, "antismash_filtered_fasta", "{sid}.fna")
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     params:
         min_len=ANTISMASH_ASSEMBLY_MIN_CONTIG_LEN,
         bin=SEQKIT_BIN
@@ -184,7 +194,7 @@ rule prep_antismash_gff:
     output:
         gff3=os.path.join(BGC_OUTDIR, "antismash_gff", "{sid}.gff3")
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     run:
         prefix = f"{wildcards.sid}:"
         keep_ids = set()
@@ -210,7 +220,7 @@ rule prep_antismash_gff_all:
     """Barrier: every prep_antismash_gff job finishes before any
     run_antismash job starts."""
     input:
-        expand(rules.prep_antismash_gff.output.gff3, sid=BGC_SAMPLES)
+        expand(rules.prep_antismash_gff.output.gff3, sid=SAMPLES.index)
     output:
         touch(os.path.join(BGC_OUTDIR, "antismash_gff", ".all_prepped"))
 
@@ -237,7 +247,7 @@ rule run_antismash:
     threads:
         THREADS_ANTISMASH_ASSEMBLY
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     shell:
         """
         mkdir -p "$(dirname {log})"
@@ -261,7 +271,7 @@ rule summarise_sample_bgc:
     output:
         tsv=temp(os.path.join(BGC_OUTDIR, "antismash_summaries", "{sid}_bgc_summary.tsv"))
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     run:
         os.makedirs(os.path.dirname(output.tsv), exist_ok=True)
 
@@ -324,7 +334,7 @@ rule summarise_sample_bgc:
 rule master_bgc_summary:
     """Merge all per-sample BGC summaries and add a header."""
     input:
-        expand(os.path.join(BGC_OUTDIR, "antismash_summaries", "{sid}_bgc_summary.tsv"), sid=BGC_SAMPLES)
+        expand(os.path.join(BGC_OUTDIR, "antismash_summaries", "{sid}_bgc_summary.tsv"), sid=SAMPLES.index)
     output:
         os.path.join(BGC_OUTDIR, "antismash_summaries", "antismash_master_results.tsv")
     shell:
@@ -342,7 +352,7 @@ rule gather_bigscape_input:
     Rebuilds the directory from scratch each time (rm -rf first) so stale
     entries from an earlier partial run don't accumulate."""
     input:
-        expand(os.path.join(BGC_OUTDIR, "antismash", "{sid}"), sid=BGC_SAMPLES)
+        expand(os.path.join(BGC_OUTDIR, "antismash", "{sid}"), sid=SAMPLES.index)
     output:
         outdir=directory(os.path.join(BGC_OUTDIR, "bigscape_input"))
     log:
@@ -470,7 +480,7 @@ rule extract_grodon_input:
         he=os.path.join(GRODON_DIR, "{sid}", "{sid}_highly_expressed.txt"),
         depth=os.path.join(GRODON_DIR, "{sid}", "{sid}_depth.tsv"),
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     run:
         os.makedirs(os.path.dirname(output.cds), exist_ok=True)
 
@@ -547,7 +557,7 @@ rule run_gRodon:
         script_dir=os.path.dirname(GRODON_SCRIPT),
         tmpdir=os.path.join(config["work_dir"], "tmp"),
     wildcard_constraints:
-        sid="|".join(BGC_SAMPLES)
+        sid="|".join(SAMPLES.index)
     shell:
         """
         mkdir -p "$(dirname {log})"
@@ -566,7 +576,7 @@ rule run_gRodon:
 rule master_growth_rate_summary:
     """Concatenate every sample's gRodon2 growth-rate estimate into one table."""
     input:
-        expand(rules.run_gRodon.output.tsv, sid=BGC_SAMPLES)
+        expand(rules.run_gRodon.output.tsv, sid=SAMPLES.index)
     output:
         tsv=os.path.join(GRODON_DIR, "growth_rate_master_results.tsv")
     run:

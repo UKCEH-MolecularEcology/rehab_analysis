@@ -24,8 +24,12 @@ localrules:
 ############################################
 # SEED mapping to annotations
 rule seed_diamond:
+    # barrier: don't start for ANY sample until gene calling (Prodigal) has
+    # finished for ALL samples -- see megahit's barrier comment in
+    # rules/assembly.smk for the phase-ordering rationale.
     input:
-        fasta=os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta")
+        fasta=os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta"),
+        barrier="status/annotation.done"
     output:
         daa=os.path.join(RESULTS_DIR, "seed/{sid}/{sid}_seed.daa"),
         tsv=os.path.join(RESULTS_DIR, "seed/{sid}/{sid}_seed.tsv")
