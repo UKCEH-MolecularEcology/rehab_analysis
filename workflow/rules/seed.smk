@@ -93,54 +93,51 @@ rule reduce_counts:
 
 # Concatenating counts for all samples
 rule concatenate_abundance:
+    # NOTE: the sample list was previously under `params`, not `input` -- with
+    # no real Snakemake input, this rule had zero dependencies and ran
+    # immediately, scanning whatever partial results existed on disk at that
+    # moment via os.walk (bypassing dependency tracking entirely) instead of
+    # waiting for every sample's reduce_counts.tsv. Same bug class as the one
+    # found in bgc_amr.smk. Now takes the expand(...) list as a real `input`,
+    # and iterates that exact list rather than os.walk-ing the directory.
+    input:
+        counts=expand(os.path.join(RESULTS_DIR, "seed/{sid}/{sid}.seed.reduced_counts.tsv"), sid=SAMPLES.index)
     output:
         os.path.join(RESULTS_DIR, "seed/allsamples_anno_concatenated.tsv")
-    params:
-        counts=expand(os.path.join(RESULTS_DIR, "seed/{sid}/{sid}.seed.reduced_counts.tsv"), sid=SAMPLES.index)
     log:
         os.path.join(RESULTS_DIR, "logs/seed/concatenating_allsamples.log")
     message:
         "Concatenating reduced SEED counts"
     run:
-        # Get the input and output paths
-        input_path = os.path.dirname(output[0])
         output_path = output[0]
 
         with open(output_path, "w") as out:
-            for root, dirs, filenames in os.walk(input_path):
-                for filename in filenames:
+            for filename_path in input.counts:
+                # Get sample name from filename.
+                sample_name = os.path.basename(filename_path).split(".seed.reduced_counts.tsv")[0]
 
-                    # get files with ".seed.reduced_counts.tsv" ending
-                    if filename.endswith('.seed.reduced_counts.tsv'):
+                # Open file and read it line by line.
+                with open(filename_path, "r") as samsa_reduced_abund:
 
-                        # Get full file path of current file.
-                        filename_path = os.path.join(root, filename)
+                    # Iterate over each line.
+                    for line in samsa_reduced_abund:
 
-                        # Get sample name from filename.
-                        sample_name = filename.split(".seed.reduced_counts.tsv")[0]
+                        # Split line into list of fields.
+                        fields = line.strip("\n").split("\t")
 
-                        # Open file and read it line by line.
-                        with open(filename_path, "r") as samsa_reduced_abund:
+                        # Extract fields.
+                        prop = fields[0]
+                        no_reads = fields[1]
+                        gene = fields[2]
 
-                            # Iterate over each line.
-                            for line in samsa_reduced_abund:
+                        # Check if gene name is blank.
+                        if gene == "":
 
-                                # Split line into list of fields.
-                                fields = line.strip("\n").split("\t")
+                            # If gene name is blank, replace it with "unclassified_" and fourth field.
+                            gene = "unclassified_" + fields[3]
 
-                                # Extract fields.
-                                prop = fields[0]
-                                no_reads = fields[1]
-                                gene = fields[2]
-
-                                # Check if gene name is blank.
-                                if gene == "":
-
-                                    # If gene name is blank, replace it with "unclassified_" and fourth field.
-                                    gene = "unclassified_" + fields[3]
-
-                                # Write sample name, gene name, and number of reads to output file.
-                                out.write(sample_name + "\t" + gene + "\t" + no_reads + "\n")
+                        # Write sample name, gene name, and number of reads to output file.
+                        out.write(sample_name + "\t" + gene + "\t" + no_reads + "\n")
 
 # Converting concatenated abundance to matrix
 rule matrify:
