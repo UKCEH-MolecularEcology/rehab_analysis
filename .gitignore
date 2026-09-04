@@ -14,7 +14,10 @@ venv/
 .conda/
 
 # REHAB project-specific: large/generated data, never tracked in git
-data/
+data/*
+!data/PRJEB34634
+data/PRJEB34634/*
+!data/PRJEB34634/metadata
 results/
 status/
 tmp/
