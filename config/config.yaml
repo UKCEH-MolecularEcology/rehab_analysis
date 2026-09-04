@@ -7,7 +7,7 @@
 #
 # Start minimal and extend once the data acquisition step (see scripts/) has
 # produced config/samples.tsv.
-steps: ["preprocessing", "taxonomy", "assembly", "amr", "bgc_amr"]
+steps: ["preprocessing", "taxonomy", "assembly", "amr", "amrscan", "bgc_amr"]
 
 ############################################################
 # INPUT
@@ -226,3 +226,15 @@ bigscape:
 # Singularity (image + temp files under work_dir/containers and work_dir/tmp)
 grodon:
   image: "shengwei/grodon2:latest"
+
+############################################################
+# amrscan (workflow/rules/amrscan.smk) -- read-based AMR gene/variant
+# detection via submodules/snake_amrscan (H.S. Gweon's resscan).
+# The pre-existing 'amrscan' conda env has bwa/diamond/samtools but not
+# pandas/numpy, so PATH is stitched with the base miniforge3 python (which
+# has both) rather than rebuilding either environment.
+amrscan:
+  threads: 24
+  db: "/prj/DECODE/salisbury_plain_results/snake_amrscan/resscan_CARD_v4.0.1"
+  python_bin: "/home/susbus/miniforge3/bin/python"
+  env_bin: "/prj/DECODE/conda_envs/amrscan/bin"

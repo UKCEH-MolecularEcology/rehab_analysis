@@ -7,3 +7,6 @@
 [submodule "submodules/multismash"]
 	path = submodules/multismash
 	url = https://github.com/zreitz/multismash.git
+[submodule "submodules/snake_amrscan"]
+	path = submodules/snake_amrscan
+	url = git@github.com:UKCEH-MolecularEcology/snake_amrscan.git

@@ -110,6 +110,14 @@ if "amr" in STEPS:
         "status/amr.done"
     ]
 
+# amrscan: read-based AMR gene/variant detection (submodules/snake_amrscan)
+if "amrscan" in STEPS:
+    include:
+        "rules/amrscan.smk"
+    TARGETS += [
+        "status/amrscan.done"
+    ]
+
 # BGC / AMR markers / growth rate (per-sample assembly; adapted from SOCD's
 # singlem_bgc_Snakefile_no_metadata)
 if "bgc_amr" in STEPS:

@@ -84,6 +84,30 @@ No SLURM on this host — run locally:
 assembly, AMR, binning, ...). See `workflow/rules/*.smk` for the full set mirrored
 from `metag_analyses`.
 
+## Read-based AMR detection (`amrscan`)
+
+Adds [UKCEH-MolecularEcology/snake_amrscan](https://github.com/UKCEH-MolecularEcology/snake_amrscan)
+as a git submodule (`submodules/snake_amrscan`), wired in via
+`workflow/rules/amrscan.smk`. Runs H.S. Gweon's
+[resscan](https://github.com/hsgweon/resscan) tool directly on trimmed reads
+(gene/variant-level AMR calls, independent of assembly quality) — a third,
+complementary approach alongside `rules/amr.smk` (RGI on assembled contigs)
+and `bgc_amr.smk`'s curated-KEGG-marker summary.
+
+> **Known issue**: `snake_amrscan`'s own nested submodule (`hsgweon/resscan`)
+> is pinned at a commit that was never pushed to its public GitHub remote, so
+> `git submodule update --init --recursive` fails for that inner submodule on
+> a fresh clone. Worked around here by copying the working tree directly from
+> the known-good checkout at `/prj/DECODE/salisbury_plain_results/snake_amrscan/submodules/resscan`
+> (untracked, not a real git submodule) — re-run that copy if
+> `submodules/snake_amrscan/submodules/resscan/resscan/resscan.py` is ever
+> missing after a fresh clone.
+
+Reuses the pre-existing `amrscan` conda env
+(`/prj/DECODE/conda_envs/amrscan`, has bwa/diamond/samtools) stitched with
+the base miniforge3 python (has pandas/numpy, which that env lacks) — see
+`config/config.yaml`'s `amrscan` section.
+
 ## BGC / AMR-marker / growth-rate step (`bgc_amr`)
 
 Adapted from the SOCD project's `singlem_bgc_Snakefile_no_metadata`
