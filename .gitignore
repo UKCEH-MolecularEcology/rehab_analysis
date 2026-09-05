@@ -24,6 +24,11 @@ tmp/
 containers/*.sif
 logs/
 
+# samtools sort scratch files (written to CWD -- i.e. work_dir/repo root --
+# when a rule doesn't pass samtools sort -T explicitly)
+samtools.*.tmp.*.bam
+*.tmp.[0-9]*.bam
+
 # Misc
 localDB*
 **localDB**

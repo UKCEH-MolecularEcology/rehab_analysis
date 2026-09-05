@@ -158,17 +158,38 @@ rule run_gecco:
         (date && {params.bin} run --genome {input.fasta} -o $(dirname {output}) && date) &> {log}
         """
 
+rule pre_antismash_barrier:
+    """antiSMASH is the heaviest, most contig-count-sensitive step in the
+    pipeline; run it strictly last, after every other step has fully
+    finished for every sample -- not just after gene calling (unlike
+    GECCO/eggNOG/coverage/binning/etc., which only wait on annotation.done
+    and may still be running when antiSMASH would otherwise start)."""
+    input:
+        "status/preprocessing.done",
+        "status/taxonomy.done",
+        "status/assembly.done",
+        "status/annotation.done",
+        "status/coverage.done",
+        "status/functions.done",
+        "status/amr.done",
+        "status/amrscan.done",
+        "status/binning.done",
+        "status/seed.done",
+    output:
+        touch("status/pre_antismash_barrier.done")
+
+
 rule filter_assembly_min_len:
     """Drop contigs shorter than ANTISMASH_ASSEMBLY_MIN_CONTIG_LEN before
     antiSMASH ever sees them -- a real multi-gene BGC can't fit intact on a
     much shorter contig, but antiSMASH's hmmsearch cost scales with the
     genes annotated on them regardless.
 
-    barrier: don't start for ANY sample until gene calling (Prodigal) has
-    finished for ALL samples."""
+    barrier: don't start for ANY sample until every other step (not just
+    gene calling) has finished for ALL samples -- see pre_antismash_barrier."""
     input:
         fasta=os.path.join(RESULTS_DIR, "assembly", "{sid}", "{sid}.fasta"),
-        barrier="status/annotation.done"
+        barrier="status/pre_antismash_barrier.done"
     output:
         fasta=os.path.join(BGC_OUTDIR, "antismash_filtered_fasta", "{sid}.fna")
     wildcard_constraints:
