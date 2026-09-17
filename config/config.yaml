@@ -84,7 +84,7 @@ singlem:
 
 # MEGAHIT
 megahit:
-  threads: 68
+  threads: 32
   coassembly_threads: 70
 
 clumpify:
