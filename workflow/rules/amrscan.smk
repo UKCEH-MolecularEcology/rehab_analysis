@@ -33,7 +33,7 @@ rule amrscan:
 
 ############################################
 RESSCAN_ROOT = os.path.join(SUBMODULES, "snake_amrscan", "submodules", "resscan")
-AMRSCAN_MERGE_SCRIPT = os.path.join(SUBMODULES, "snake_amrscan", "scripts", "merge_amrscan_tables.py")
+AMRSCAN_MERGE_SCRIPT = os.path.join(SUBMODULES, "snake_amrscan", "scripts", "merge_resscan_tables.py")
 
 
 rule run_amrscan:
