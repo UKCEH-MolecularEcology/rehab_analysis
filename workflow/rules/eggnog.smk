@@ -64,8 +64,15 @@ rule emapper:
     message:
         "Running EggNog-mapper on {wildcards.sid}"
     shell:
+        # --override: Snakemake already owns the rerun decision (based on this
+        # rule's declared `output`); emapper.py's own default is to abort if
+        # it finds ANY existing file in --output_dir, which includes harmless
+        # partial files left behind by an earlier run that failed/crashed
+        # before this rule's actual `output` was written (observed: a 0-byte
+        # .emapper.hits from a pre-fix crashed attempt). Without --override,
+        # Snakemake's own retry of a failed job becomes self-defeating.
         "(date && mkdir -p $(dirname {output}) && "
-        "emapper.py -m diamond --data_dir {params.db} --itype {params.itype} --no_file_comments --cpu {threads} -i {input.fasta} -o {wildcards.sid} --output_dir $(dirname {output}) && "
+        "emapper.py -m diamond --data_dir {params.db} --itype {params.itype} --no_file_comments --cpu {threads} --override -i {input.fasta} -o {wildcards.sid} --output_dir $(dirname {output}) && "
         "date) &> >(tee {log})"
 
 # Final annotations
@@ -87,8 +94,9 @@ rule emapper_final:
     message:
         "Running EggNog-mapper annotations on {wildcards.sid}"
     shell:
+        # --override: see rule emapper's comment above for why.
         "(date && "
-        "emapper.py --data_dir {params.db} --annotate_hits_table {input} --no_file_comments -o $(echo {output} | sed 's/.emapper.annotations//g' ) --cpu {threads} --dbmem && "
+        "emapper.py --data_dir {params.db} --annotate_hits_table {input} --no_file_comments --override -o $(echo {output} | sed 's/.emapper.annotations//g' ) --cpu {threads} --dbmem && "
         "date) &> >(tee {log})"
 
 

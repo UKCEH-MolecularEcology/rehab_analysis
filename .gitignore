@@ -29,6 +29,11 @@ logs/
 samtools.*.tmp.*.bam
 *.tmp.[0-9]*.bam
 
+# emapper.py's own diamond scratch dir, written to CWD (repo root, since
+# Snakemake's workdir is set there) when a rule doesn't pass --temp_dir;
+# self-cleaning on success but can linger at repo root if a job is killed
+emappertmp_*/
+
 # Misc
 localDB*
 **localDB**
