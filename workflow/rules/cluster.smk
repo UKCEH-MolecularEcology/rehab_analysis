@@ -37,7 +37,7 @@ rule modify_fasta:
     message:
         "Adding filename to fasta headers: {wildcards.sid}"
     shell:
-        """(date && filename={wildcards.sid} && awk -v filename="$name" '/^>/ {{ sub(">", ">" filename ":"); }} 1' {input.fasta} > {output} && date) &> >(tee {log})"""
+        """(date && filename={wildcards.sid} && awk -v filename="$filename" '/^>/ {{ sub(">", ">" filename ":"); }} 1' {input.fasta} > {output} && date) &> >(tee {log})"""
 
 ## Concatetnating the assemblies for binning 
 #rule ass_cat:

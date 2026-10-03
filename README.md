@@ -44,6 +44,18 @@ export SINGULARITY_CACHEDIR=tmp/singularity_cache
 singularity pull containers/fastq-dl.sif docker://quay.io/biocontainers/fastq-dl:4.0.1--pyhdfd78af_0
 ```
 
+> **Known issue**: the shared `eggnog-mapper=2.1.9` conda env at
+> `/prj/DECODE/ea_biofilm_results/conda_envs/da281a3695a41196430106915101b45c_`
+> was solved against Python 3.14, which removed the stdlib `distutils` module
+> that eggnog-mapper 2.1.9 still imports directly — every `emapper.py`
+> invocation (including the `download_eggnogDB` setup rule) failed with
+> `ModuleNotFoundError: No module named 'distutils'`. Fixed by installing
+> `setuptools` into that env (`pip install setuptools`), which ships a
+> `distutils` compatibility shim — confirmed `emapper.py` now imports and
+> runs correctly. This is an env-level fix (not tracked in this repo); if the
+> shared env cache is ever rebuilt from its `.yaml` alone, this will need
+> reapplying.
+
 ## 1. Download raw FASTQ
 
 ```bash
