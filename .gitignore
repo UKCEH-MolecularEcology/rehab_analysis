@@ -13,6 +13,14 @@ env/
 venv/
 .conda/
 
+# pixi (binning/MAG module only -- see pixi.toml): pixi.toml and pixi.lock
+# ARE tracked for reproducibility; the binary + global package cache
+# (tools/pixi_home/) and the resolved per-environment installs (.pixi/,
+# created at the repo root by pixi itself, ~27GB) are not -- rebuild both
+# with `pixi install --all` after sourcing scripts/pixi_env.sh.
+tools/
+.pixi/
+
 # REHAB project-specific: large/generated data, never tracked in git
 data/*
 !data/PRJEB34634
