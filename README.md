@@ -95,11 +95,12 @@ No SLURM on this host — run locally:
 `config/config.yaml` controls which pipeline `steps` run. Currently enabled:
 `preprocessing`, `taxonomy`, `assembly`, `annotation` (Prodigal), `coverage`,
 `functions` (eggNOG + KEGG antibiotic-biosynthesis marker search + MagicLamp),
-`amr` (RGI), `amrscan`, `bgc_amr`, `binning` (mmseqs2 dedup → MetaBAT2 /
-CONCOCT / MetaBinner / SemiBin → dRep → GTDB-Tk/CheckM2 quality), `seed`. See
-`workflow/rules/*.smk` for the full set mirrored from `metag_analyses`; the
-full DAG (4,772 jobs across all 147 samples at time of writing) was verified
-with `snakemake -n` before enabling.
+`amr` (RGI), `amrscan`, `bgc_amr`, `binning` (mmseqs2 dedup → 7-binner
+ensemble → DAS_Tool → Rosella refine → Galah dereplication → GTDB-Tk/CheckM2
+quality — see **MAG generation** below), `mgthermometer`, `syntracker`,
+`seed`. See `workflow/rules/*.smk` for the full set mirrored from
+`metag_analyses`; each addition is verified with `snakemake -n` before being
+enabled.
 
 Two pre-existing bugs in the mirrored `metag_analyses` rules were fixed here
 (both blocked `binning` outright, not something introduced by this repo):
@@ -110,6 +111,88 @@ Two pre-existing bugs in the mirrored `metag_analyses` rules were fixed here
 - `rules/semibin.smk`'s `unzip_semibin` shell command had unescaped
   `${1%.gz}` / `{}` (find's placeholder), which Snakemake's shell
   `.format()` misinterprets; escaped as `${{1%.gz}}` / `{{}}`.
+
+## MAG generation (`binning`)
+
+Adopts [michoug/MAGsGeneration](https://github.com/michoug/MAGsGeneration)'s
+multi-binner ensemble approach, adapted to this pipeline's existing
+**pooled/merged co-assembly** architecture: all 147 samples' deduplicated
+contigs are already concatenated into one `results/assembly/cat_assembly_filter.fasta`,
+and all 147 samples' reads are already mapped against that single reference
+(`results/bam/{sid}/cat_assembly_{sid}.bam`). Every new binner below
+consumes that same pooled assembly + existing BAMs directly — there is no
+per-sample or scoped-grouping variant, since the coverage-signal problem
+the reference repo's own per-sample design solves (needing cross-sample
+coverage for good binning) is already solved by the pooled design.
+
+**Binners** (`workflow/rules/mags_generation.smk`, `workflow/rules/binning.smk`):
+MetaBAT2, CONCOCT, Rosella, TaxVAMB (taxonomy-informed VAMB, using an
+mmseqs2 GTDB classification of the pooled contigs), COMEBin, SemiBin2,
+MetaCAT — 7 binners total. MetaBinner and a plain (non-taxonomy) SemiBin
+run are disabled for now (see the commented-out lines in `binning.smk`).
+
+**Dereplication** (`workflow/rules/dereplicate.smk`, `bin_taxqual.smk`):
+DAS_Tool ensembles all 7 binners' outputs (`--score_threshold -42`) →
+Rosella refine (density/UMAP re-clustering informed by CheckM2 quality) →
+Galah dereplication (replacing dRep) → the pipeline's pre-existing
+GTDB-Tk/CheckM2 setup runs unchanged on the final set
+(`results/bins/finalbins`).
+
+**Package management**: several of the new binners (VAMB/TaxVAMB, MetaCAT)
+are pip/wheel installs with no plain bioconda package, so this module uses
+[pixi](https://pixi.sh) (`pixi.toml`/`pixi.lock` at the repo root) instead
+of conda — scoped to just these new tools, not a replacement for the
+conda/Singularity environments used everywhere else in the pipeline. CheckM2
+and GTDB-Tk are deliberately *not* in `pixi.toml` — they reuse the
+already-configured conda env + databases (`config.yaml`'s `checkm2`/`gtdbtk`
+sections). `scripts/pixi_env.sh` must be sourced before any `pixi` command
+(including from rule shell blocks) — it keeps pixi's binary, cache, and
+resolved environments entirely project-local
+(`tools/pixi_home/`, `.pixi/`, both gitignored — ~27 GB resolved), never
+`$HOME` or `/tmp`.
+
+**Databases**: new DBs needed by this module (mmseqs2 GTDB taxonomy,
+MetaCAT) go under `/hdd0/susbus/databases/` alongside the project's
+existing shared DBs (CheckM2, GTDB-Tk, BUSCO, SingleM, etc.), not inside
+this repo.
+
+### Optional sub-modules
+
+Adapted from the same reference repo's optional steps:
+
+- **MGthermometer** (`workflow/rules/mgthermometer.smk`, standard step) —
+  per-MAG optimal growth temperature (OGT) proxy via the IVYWREL
+  amino-acid frequency method, using pyrodigal protein prediction +
+  `workflow/scripts/getFrequency.pl` (carried over from `metag_analyses`).
+- **SynTracker** (`workflow/rules/syntracker.smk`, standard step) — per-MAG
+  synteny tracking across all 147 samples. The one piece of this module
+  that does *not* use the pooled assembly: it needs each sample's own
+  per-sample assembly (`results/assembly/{sid}/{sid}.fasta`) as the BLAST
+  target pool, since tracking synteny *across* samples requires keeping
+  them distinct.
+- **Eukaryotic MAG filtering** (`workflow/rules/eukaryotes_filter.smk`,
+  **opt-in** — add `"eukaryotic_mags"` to `config.yaml`'s `steps` list to
+  enable) — recovers eukaryotic bins that the prokaryote-focused
+  DAS_Tool/Rosella-refine/Galah chain above would otherwise discard, via
+  two independent tracks: DeepMicroClass classification of every raw
+  candidate bin (≥80% eukaryotic sequence kept) and REMAG (a binner
+  designed specifically for eukaryotic genome recovery) run directly on
+  the pooled assembly. Both tracks' candidates get BUSCO (`--auto-lineage-euk`,
+  reusing the existing `eukaryota_odb10` cache at
+  `/hdd0/susbus/databases/busco_downloads`) and a final Galah
+  dereplication pass, matching the main MAG chain.
+
+### A note on Snakemake barriers vs. priority hints
+
+When ordering steps against an already-partially-complete pipeline run, a
+*hard* input-file barrier (e.g. requiring a new marker file as input) can
+force Snakemake to invalidate and re-run expensive already-completed jobs —
+the new marker file is always newer by mtime, and this holds even under
+`--rerun-triggers mtime`. Where this pipeline needs step B to merely run
+*after* step A completes rather than strictly *depend on* A's output (e.g.
+SingleM before eggNOG), a soft `priority:` hint is used instead of a real
+barrier, specifically to avoid invalidating completed work. See the
+relevant rule files' comments for details.
 
 ## Read-based AMR detection (`amrscan`)
 
@@ -167,10 +250,18 @@ config/      config.yaml, samples.tsv (generated), schema-validated
 data/        ENA metadata + raw/concatenated FASTQ (gitignored, huge)
 metadata/    REHAB sample tracking + chemistry data (tracked in git)
 resources/   pipeline reference data (e.g. kegg_abx_bgc.txt), tracked in git
-scripts/     download / concat / manifest / pipeline-runner scripts
+scripts/     download / concat / manifest / pipeline-runner scripts, plus
+             pixi_env.sh (sourced by MAG-generation rules before any `pixi` call)
 workflow/    Snakefile, rules/, envs/, scripts/ (mirrored from metag_analyses,
-             plus rules/bgc_amr.smk adapted from the SOCD project)
+             plus rules/bgc_amr.smk adapted from SOCD and
+             rules/{mags_generation,dereplicate,bin_taxqual,eukaryotes_filter,
+             mgthermometer,syntracker}.smk adapted from michoug/MAGsGeneration)
 schemas/     config & sample-sheet JSON schemas
 containers/  Singularity images for newly-installed tools (gitignored)
-tmp/         scratch space for all tool/Singularity/conda temp files (gitignored)
+pixi.toml    pixi manifest for the MAG-generation module's new binners
+             (VAMB, MetaCAT, etc.) -- scoped to that module only, everything
+             else still uses conda/Singularity
+pixi.lock    pinned pixi resolution, tracked for reproducibility
+tools/       pixi's own binary/cache/resolved envs (gitignored, ~27 GB)
+tmp/         scratch space for all tool/Singularity/conda/pixi temp files (gitignored)
 ```
