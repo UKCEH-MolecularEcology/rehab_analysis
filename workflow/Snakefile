@@ -179,6 +179,25 @@ if "eukaryotic_mags" in STEPS:
         "status/eukaryotes_filter.done"
     ]
 
+# MGthermometer (IVYWREL-based OGT estimate per final MAG). Standard step
+# -- depends on rules.galah.output.final, so must be included after the
+# "binning" block above.
+if "mgthermometer" in STEPS:
+    include:
+        "rules/mgthermometer.smk"
+    TARGETS += [
+        "status/mgthermometer.done"
+    ]
+
+# SynTracker (per-MAG synteny tracking across all per-sample assemblies).
+# Standard step -- also depends on rules.galah.output.final.
+if "syntracker" in STEPS:
+    include:
+        "rules/syntracker.smk"
+    TARGETS += [
+        "status/syntracker.done"
+    ]
+
 # Coverage
 if "coverage" in STEPS:
     include:

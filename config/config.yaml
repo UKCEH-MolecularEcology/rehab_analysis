@@ -3,11 +3,17 @@
 #
 # Available: "preprocessing", "taxonomy", "assembly", "contig_taxonomy", "sylph",
 #            "kaiju", "coassembly", "annotation", "amr", "eukaryotes", "cluster",
-#            "binning", "coverage", "functions", "seed", "traits", "antismash"
+#            "binning", "coverage", "functions", "seed", "traits", "antismash",
+#            "mgthermometer", "syntracker", "eukaryotic_mags"
+#
+# mgthermometer and syntracker run standard alongside binning (both just
+# need the final dereplicated MAGs). eukaryotic_mags (MAGsGeneration's
+# DeepMicroClass/REMAG/BUSCO-euk eukaryotic bin recovery) stays optional --
+# add it to this list only when you want that extra pass over the raw bins.
 #
 # Start minimal and extend once the data acquisition step (see scripts/) has
 # produced config/samples.tsv.
-steps: ["preprocessing", "taxonomy", "assembly", "annotation", "coverage", "functions", "amr", "amrscan", "bgc_amr", "binning", "seed"]
+steps: ["preprocessing", "taxonomy", "assembly", "annotation", "coverage", "functions", "amr", "amrscan", "bgc_amr", "binning", "seed", "mgthermometer", "syntracker"]
 
 ############################################################
 # INPUT
