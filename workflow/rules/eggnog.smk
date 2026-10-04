@@ -114,8 +114,18 @@ rule emapper_final:
         "Running EggNog-mapper annotations on {wildcards.sid}"
     shell:
         # --override: see rule emapper's comment above for why.
+        # Final `touch {output}`: emapper.py's --annotate_hits_table mode
+        # re-touches its own INPUT file (the seed_orthologs table from rule
+        # emapper) a beat *after* writing this rule's declared output,
+        # leaving input newer than output. Under --rerun-triggers mtime
+        # that makes every completed emapper_final job look permanently
+        # stale (confirmed across all already-finished samples -- seed_
+        # orthologs consistently ~70-90ms newer than annotations), so it
+        # would re-run forever. Touching the output last guarantees it ends
+        # up newer regardless of what emapper.py does internally.
         "(date && "
         "emapper.py --data_dir {params.db} --annotate_hits_table {input} --no_file_comments --override -o $(echo {output} | sed 's/.emapper.annotations//g' ) --cpu {threads} --dbmem && "
+        "touch {output} && "
         "date) &> >(tee {log})"
 
 
