@@ -150,6 +150,8 @@ if "binning" in STEPS:
     include:
         "rules/binning.smk"
     include:
+        "rules/mags_generation.smk"
+    include:
         "rules/dereplicate.smk"
     include:
         "rules/bin_taxqual.smk"
@@ -160,6 +162,7 @@ if "binning" in STEPS:
     TARGETS += [
         "status/cluster.done",
         "status/binning.done",
+        "status/mags_generation.done",
         # "status/semibin.done",
         "status/bin_taxqual.done"
     ]

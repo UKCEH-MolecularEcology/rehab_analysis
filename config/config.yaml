@@ -165,6 +165,33 @@ semibin:
   threads: 64
   env: "wastewater"
 
+############################################################
+# MAG generation (new multi-binner module, workflow/rules/mags_generation.smk)
+# All run via pixi (pixi.toml / scripts/pixi_env.sh), adapted from
+# https://github.com/michoug/MAGsGeneration -- see that file's docstring
+# for why (several of these aren't plain bioconda packages).
+rosella:
+  threads: 28
+
+mmseqs_gtdb:
+  threads: 20
+
+vamb:
+  threads: 14
+
+comebin:
+  threads: 20
+
+metacat:
+  threads: 20
+
+# Galah dereplication (workflow/rules/dereplicate.smk), replacing dRep for
+# the new 7-way binner ensemble -- matches the reference repo's choice.
+galah:
+  threads: 10
+  comp: 70
+  cont: 10
+
 dasTool:
   bin: "/hdd0/susbus/tools/DAS_Tool/DAS_Tool"
   threads: 64
