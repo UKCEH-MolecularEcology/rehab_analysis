@@ -167,6 +167,18 @@ if "binning" in STEPS:
         "status/bin_taxqual.done"
     ]
 
+# Eukaryotic MAG filtering (optional -- recovers eukaryotic bins that the
+# prokaryote-focused DAS_Tool/Rosella-refine/Galah chain above would
+# otherwise discard). Not yet in config.yaml's steps list -- depends on
+# mags_generation.smk's raw binner outputs, so must be included after the
+# "binning" block above.
+if "eukaryotic_mags" in STEPS:
+    include:
+        "rules/eukaryotes_filter.smk"
+    TARGETS += [
+        "status/eukaryotes_filter.done"
+    ]
+
 # Coverage
 if "coverage" in STEPS:
     include:

@@ -237,6 +237,18 @@ gecco:
 seqkit:
   bin: "/home/susbus/miniforge3/bin/seqkit"
 
+############################################################
+# Optional MAG-generation modules (workflow/rules/eukaryotes_filter.smk,
+# mgthermometer.smk, syntracker.smk)
+busco_euk:
+  # Reusing the existing BUSCO lineage cache (eukaryota_odb10 already
+  # present) rather than a fresh download -- per "check my
+  # /hdd0/susbus/databases folder for existing ones" instruction.
+  db: "/hdd0/susbus/databases/busco_downloads"
+
+remag:
+  threads: 20
+
 # antiSMASH run directly on per-sample assemblies (contrast with the
 # rules/antismash.smk MAG-level run, which uses its own conda env)
 antismash_assembly:
