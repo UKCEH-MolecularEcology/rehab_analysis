@@ -24,8 +24,12 @@ rule bin_coverage:
 ############################################
 # CONCATENATING MAGS
 rule concatenate_mags:
+    # bins/all_finalbins (collect_bins' old output, bolting raw concoct_bins
+    # on top of dRep's output) no longer exists -- rules.galah.output.final
+    # (bins/finalbins) already represents the fully-dereplicated 7-binner
+    # ensemble. See rules/dereplicate.smk and rules/bin_taxqual.smk.
     input:
-        mags=os.path.join(RESULTS_DIR, "bins/all_finalbins")    # os.path.join(RESULTS_DIR, "bins/finalbins")
+        mags=rules.galah.output.final
     output:
         os.path.join(RESULTS_DIR, "concat/cat_mags.fa")
     message:
@@ -94,7 +98,7 @@ rule concat_cat_mag_coverage:
 
 rule get_contigs:
     input:
-        bins=os.path.join(RESULTS_DIR, "bins/all_finalbins"),
+        bins=rules.galah.output.final,
         src=os.path.join(SRC_DIR, "get_all_contigs.pl")
     output:
         contigs=os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_contigs.txt")
