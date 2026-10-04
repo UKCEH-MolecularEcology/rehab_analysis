@@ -80,7 +80,7 @@ bracken:
   combine: "/hdd0/susbus/tools/Bracken/analysis_scripts/combine_bracken_outputs.py"
 
 singlem:
-  threads: 36
+  threads: 16
   # S3.2.1 (2023) is incompatible with the installed SingleM (5.4.0) --
   # matches what /prj/DECODE/socd/results/ags_agc/ags_agc_snakefile.smk
   # found and fixed. Use the same accessible copy (the "official" path at
@@ -111,7 +111,7 @@ eukulele:
 
 bwa:
   threads: 16
-  map_threads: 24
+  map_threads: 16
 
 samtools:
   sort:
@@ -155,7 +155,7 @@ mdmcleaner:
   threads: 48
 
 mapping:
-  threads: 36
+  threads: 16
 
 metabat2:
   threads: 56
