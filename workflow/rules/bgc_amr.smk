@@ -167,10 +167,12 @@ rule pre_antismash_barrier:
     input:
         "status/preprocessing.done",
         "status/taxonomy.done",
+        "status/singlem.done",
         "status/assembly.done",
         "status/annotation.done",
         "status/coverage.done",
         "status/functions.done",
+        "status/eggnog.done",
         "status/amr.done",
         "status/amrscan.done",
         "status/binning.done",

@@ -26,10 +26,15 @@ rule cluster:
 rule modify_fasta:
     # barrier: don't start for ANY sample until gene calling (Prodigal) has
     # finished for ALL samples -- see megahit's barrier comment in
-    # rules/assembly.smk for the phase-ordering rationale.
+    # rules/assembly.smk for the phase-ordering rationale. Also requires
+    # status/eggnog.done: this rule is binning's entry point, and
+    # user-requested phase ordering is singlem -> eggnog -> binning ->
+    # antismash (see emapper's barrier in rules/eggnog.smk and
+    # pre_antismash_barrier in rules/bgc_amr.smk for the rest of the chain).
     input:
         fasta=os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}.fasta"),
-        barrier="status/annotation.done"
+        barrier="status/annotation.done",
+        eggnog_barrier="status/eggnog.done"
     output:
         os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}_modified.fasta")
     log:

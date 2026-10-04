@@ -45,6 +45,25 @@ rule emapper:
     # barrier: don't start for ANY sample until gene calling (Prodigal) has
     # finished for ALL samples -- see megahit's barrier comment in
     # rules/assembly.smk for the phase-ordering rationale.
+    #
+    # NOTE on requested phase ordering (singlem -> eggnog -> binning ->
+    # antismash): a real status/singlem.done *input* barrier was tried here
+    # and reverted. singlem and eggnog had already been running concurrently
+    # for days by the time this ordering was requested (singlem ~82/147,
+    # eggnog ~78/147 done) -- a hard input barrier is a real file dependency,
+    # and Snakemake's default rerun-triggers (and even --rerun-triggers
+    # mtime) will mark EVERY sample's emapper job, including the ~78 already
+    # successfully completed ones, for re-execution once status/singlem.done
+    # is eventually created (its mtime is necessarily newer than those
+    # existing outputs). Confirmed directly via `snakemake -n`: e.g.
+    # DID-INF-AUT and WAN-DW-1000-SUM (long-finished, real multi-hour
+    # emapper runs) both came back as planned re-runs with "Reason: Input
+    # files updated by another job: status/singlem.done". That would waste
+    # days of already-done compute for a few hours of stricter ordering, so
+    # a soft rules.run_singlem priority (see rules/singlem.smk) is used
+    # instead -- it biases scheduling once both are startable, but does not
+    # retroactively un-interleave work already in flight, and will not
+    # fully serialize them given the head start eggnog already has.
     input:
         dummy=os.path.join(RESULTS_DIR, "eggnog/db_download.done"),
         fasta=os.path.join(RESULTS_DIR, "prodigal/{sid}/{sid}.faa"),

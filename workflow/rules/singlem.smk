@@ -40,8 +40,17 @@ rule setup_singlem_db:
         "touch {output.dummy} && date) &> >(tee {log})"
 
 rule run_singlem:
+    # priority: soft scheduling preference so singlem is dispatched ahead of
+    # emapper (rules/eggnog.smk) whenever Snakemake is choosing among
+    # several ready jobs -- user-requested phase ordering is
+    # singlem -> eggnog -> binning -> antismash. This is NOT a hard
+    # guarantee (Snakemake's `priority` only affects tie-breaking among
+    # jobs that are already schedulable); see the long comment on rule
+    # emapper for why a real input-file barrier isn't safe to retrofit here
+    # without discarding substantial already-completed eggnog work.
+    priority: 10
     input:
-        in1=lambda wildcards: SAMPLES.loc[wildcards.sid, "sR1"], 
+        in1=lambda wildcards: SAMPLES.loc[wildcards.sid, "sR1"],
         in2=lambda wildcards: SAMPLES.loc[wildcards.sid, "sR2"],
         dummy=os.path.join(DB_DIR, "singlem/db.done")
     output:
