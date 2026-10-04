@@ -39,8 +39,7 @@ rule trim_galore_pe:
     threads:
         config["trim_galore"]["threads"]
     params:
-        extra="--illumina -q 25",
-        debug=lambda wildcards: print(f"Wildcards for rule trim_galore_pe: {wildcards}")
+        extra="--illumina -q 25"
     log:
         os.path.join(RESULTS_DIR, "logs/trim_galore/{sid}.log")
     conda:
