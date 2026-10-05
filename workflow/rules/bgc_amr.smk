@@ -163,7 +163,14 @@ rule pre_antismash_barrier:
     pipeline; run it strictly last, after every other step has fully
     finished for every sample -- not just after gene calling (unlike
     GECCO/eggNOG/coverage/binning/etc., which only wait on annotation.done
-    and may still be running when antiSMASH would otherwise start)."""
+    and may still be running when antiSMASH would otherwise start).
+
+    mags_generation/bin_taxqual/mgthermometer/syntracker (added
+    2026-10-04/05) each produce their own status/*.done separate from
+    status/binning.done (binning.smk's own MetaBAT2+CONCOCT target) -- all
+    four are listed explicitly below so antiSMASH also waits on the full
+    7-binner ensemble, dereplication, GTDB-Tk/CheckM2, and the two
+    standard optional modules, not just the original binning step."""
     input:
         "status/preprocessing.done",
         "status/taxonomy.done",
@@ -176,6 +183,10 @@ rule pre_antismash_barrier:
         "status/amr.done",
         "status/amrscan.done",
         "status/binning.done",
+        "status/mags_generation.done",
+        "status/bin_taxqual.done",
+        "status/mgthermometer.done",
+        "status/syntracker.done",
         "status/seed.done",
     output:
         touch("status/pre_antismash_barrier.done")
