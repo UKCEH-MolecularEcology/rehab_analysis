@@ -56,6 +56,24 @@ singularity pull containers/fastq-dl.sif docker://quay.io/biocontainers/fastq-dl
 > shared env cache is ever rebuilt from its `.yaml` alone, this will need
 > reapplying.
 
+> **Known issue**: `submodules/MagicLamp`'s own `MagicLamp.py` unconditionally
+> does `from genies import FeGenie, LithoGenie, ..., HmmGenie, ...` at the top
+> of the script, but `genies/HmmGenie.py` was never actually committed
+> upstream — confirmed missing from both our checked-out commit (`cc91d01`)
+> and the current `origin/master` as of 2026-10-07, i.e. this is a genuine
+> upstream bug, not a broken local checkout. Since the import is
+> unconditional, every `MagicLamp.py` invocation fails with `ImportError:
+> cannot import name 'HmmGenie' from 'genies'` regardless of which genie is
+> actually requested — including `LithoGenie`, the only one this pipeline
+> uses (`rules/functions.smk`'s `magiclamp` rule). Worked around with a
+> minimal local stub at `submodules/MagicLamp/genies/HmmGenie.py` (untracked
+> content inside the submodule's working tree, not a modification to the
+> real submodule repo) that satisfies the import without implementing real
+> `HmmGenie` functionality — this pipeline never invokes `MagicLamp.py
+> HmmGenie`, only `LithoGenie`. Re-create that stub file if it's ever missing
+> after a fresh clone (its content is a `def main(): raise NotImplementedError(...)`
+> with a comment explaining why it exists).
+
 ## 1. Download raw FASTQ
 
 ```bash
