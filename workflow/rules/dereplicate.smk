@@ -133,6 +133,46 @@ rule dasTool:
         "date) 2> {log.err} > {log.out}"
 
 
+rule filter_dastool_bins:
+    # DAS_Tool's --write_bins writes a FASTA for every candidate bin it
+    # evaluated (including SCG-split "_sub" candidates and original bins
+    # that lost every contig to a better-scoring competitor), not just its
+    # final non-redundant selection. Only the bin names listed in
+    # das_DASTool_summary.tsv are DAS_Tool's actual answer -- feeding the
+    # raw das_DASTool_bins/ directory to CheckM2/Rosella refine (as both
+    # downstream rules did before this fix) lets rejected bins that still
+    # score well on their own (e.g. a near-complete bin that lost its
+    # contigs to a different winning bin) pass every quality gate and
+    # reach Galah as a bogus "distinct" genome that still shares raw
+    # contigs with the bin that actually won them. Ported from
+    # michoug/MAGsGeneration#34's filter_dastool_bins (the one piece of
+    # that PR adopted here -- its larger binner-selection/ranking feature
+    # was left for later, still unmerged upstream as of 2026-10-07).
+    input:
+        summary=rules.dasTool.output
+    output:
+        directory(os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins_filtered"))
+    log:
+        os.path.join(RESULTS_DIR, "logs/filter_dastool_bins.log")
+    params:
+        ext="fa",
+        src=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins")
+    message:
+        "Keeping only DAS_Tool's selected bins"
+    shell:
+        """
+        (date && mkdir -p {output} && \
+        tail -n +2 {input.summary} | cut -f1 | while read -r bin; do \
+            if [[ -f "{params.src}/$bin.{params.ext}" ]]; then \
+                cp "{params.src}/$bin.{params.ext}" {output}/; \
+            else \
+                echo "WARNING: expected winning bin file missing: {params.src}/$bin.{params.ext}" >&2; \
+            fi; \
+        done && \
+        date) &> {log}
+        """
+
+
 ############################################
 # CheckM2 (reusing this project's existing setup -- see
 # rules/bin_taxqual.smk's checkm_final for the final pass, after Galah
@@ -156,7 +196,7 @@ rule checkm_db:
 
 rule checkm2_dastool:
     input:
-        bins=rules.dasTool.output,
+        bins=rules.filter_dastool_bins.output,
         db=rules.checkm_db.output[0]
     output:
         tsv=os.path.join(RESULTS_DIR, "bins/checkm2_dastool/quality_report.tsv")
@@ -169,7 +209,7 @@ rule checkm2_dastool:
     params:
         ext=config["checkm"]["extension"],
         db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd"),
-        bins_dir=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins")
+        bins_dir=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins_filtered")
     message:
         "Running CheckM2 on the DAS_Tool consensus bins (pre-refine)"
     shell:
@@ -188,7 +228,7 @@ rule rosella_refine:
         cont=CAT_ASSEMBLY_FILTER,
         bam=EXISTING_BAMS,
         check=rules.checkm2_dastool.output.tsv,
-        bins=rules.dasTool.output
+        bins=rules.filter_dastool_bins.output
     output:
         done=touch(os.path.join(RESULTS_DIR, "bins/refine/rosella_refine.done")),
         dir=directory(os.path.join(RESULTS_DIR, "bins/refine"))
@@ -197,7 +237,7 @@ rule rosella_refine:
     threads:
         config["rosella"]["threads"]
     params:
-        bins_dir=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins")
+        bins_dir=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins_filtered")
     message:
         "Refining DAS_Tool consensus bins with Rosella"
     shell:
