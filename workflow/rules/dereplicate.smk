@@ -87,6 +87,7 @@ rule prepare_dasTool:
         """
         (date && mkdir -p $(dirname {output.metabatout}) && \
         {params.src} -e fa -i {input.metabat} > {output.metabatout} && \
+        perl -pe 's/^(\S+)[^\t]*(\t.*)$/$1$2/' {output.metabatout} > t.txt && mv t.txt {output.metabatout} && \
         perl -pe 's/metabat./{params.value}_metabat_/g' {output.metabatout} > t.txt && mv t.txt {output.metabatout} && \
         perl -pe 's/,/\t{params.value}_concoct_/g' {input.concoct} | tail -n +2 | sed 's/>s/s/g' > {output.concoctout} && \
         {params.src} -e fna -i {input.rosella} > {output.rosellaout} && \
@@ -95,7 +96,7 @@ rule prepare_dasTool:
         perl -pe 's/\t/\t{params.value}_taxvamb_/g' {output.taxvambout} > t3.txt && mv t3.txt {output.taxvambout} && \
         perl -pe 's/\tgroup/\t{params.value}_comebin_/g' {input.comebin} > {output.comebinout} && \
         perl -pe 's/\t/\t{params.value}_semibin_/g' {input.semibin} | tail -n +2 > {output.semibinout} && \
-        {params.src} -e fa -i {input.metacat} > {output.metacatout} && \
+        {params.src} -e fasta -i {input.metacat} > {output.metacatout} && \
         perl -pe 's/metacat\\./{params.value}_metacat_/g' {output.metacatout} > t4.txt && mv t4.txt {output.metacatout} && \
         date) 2> {log.err} > {log.out}
         """

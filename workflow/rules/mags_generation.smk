@@ -313,11 +313,32 @@ rule semibin:
     message:
         "Running SemiBin2 on the pooled assembly"
     shell:
+        # SemiBin2 >=2.3 no longer writes contig_bins.tsv itself, and a
+        # bare `touch {output}` (the old approach) would silently mask a
+        # "No bins were created" failure as success with an empty file.
+        # Rebuild it from output_bins/ instead, and only when bins were
+        # actually produced (see michoug/MAGsGeneration#33).
         """
         (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
         rm -rf "$(dirname {output})" && \
         pixi r -e semibin SemiBin2 single_easy_bin -i {input.cont} -b {input.bam} -o "$(dirname {output})" -t {threads} --no-recluster --minfasta 200000 && \
-        touch {output} && \
+        bins_dir="$(dirname {output})/output_bins" && \
+        : > {output} && \
+        if compgen -G "$bins_dir/*.fa.gz" > /dev/null 2>&1; then \
+            echo -e "contig_id\tbin_id" > {output} && \
+            for f in "$bins_dir"/*.fa.gz; do \
+                bin=$(basename "$f" .fa.gz) && \
+                zgrep '^>' "$f" | sed 's/^>//' | awk -v b="$bin" '{{print $1"\t"b}}' >> {output}; \
+            done; \
+        elif compgen -G "$bins_dir/*.fa" > /dev/null 2>&1; then \
+            echo -e "contig_id\tbin_id" > {output} && \
+            for f in "$bins_dir"/*.fa; do \
+                bin=$(basename "$f" .fa) && \
+                grep '^>' "$f" | sed 's/^>//' | awk -v b="$bin" '{{print $1"\t"b}}' >> {output}; \
+            done; \
+        else \
+            echo "SemiBin2 produced no bins; created empty output file {output}" >&2; \
+        fi && \
         date) &> {log}
         """
 
