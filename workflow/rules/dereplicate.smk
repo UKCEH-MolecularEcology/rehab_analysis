@@ -160,15 +160,28 @@ rule filter_dastool_bins:
     message:
         "Keeping only DAS_Tool's selected bins"
     shell:
+        # Process substitution (not a trailing pipe) so `missing` set inside
+        # the loop survives into the post-loop check -- a pipe would run the
+        # loop in a subshell and silently discard the counter. Hardened to a
+        # hard error (matching michoug/MAGsGeneration#34's latest commits,
+        # 2026-10-07) rather than a WARNING: DAS_Tool's own summary naming a
+        # bin its own --write_bins didn't produce means something is
+        # actually wrong, not something to quietly skip past.
         """
         (date && mkdir -p {output} && \
-        tail -n +2 {input.summary} | cut -f1 | while read -r bin; do \
+        missing=0 && \
+        while read -r bin; do \
             if [[ -f "{params.src}/$bin.{params.ext}" ]]; then \
                 cp "{params.src}/$bin.{params.ext}" {output}/; \
             else \
-                echo "WARNING: expected winning bin file missing: {params.src}/$bin.{params.ext}" >&2; \
+                echo "ERROR: expected winning bin file missing: {params.src}/$bin.{params.ext}" >&2; \
+                missing=$((missing + 1)); \
             fi; \
-        done && \
+        done < <(tail -n +2 {input.summary} | cut -f1) && \
+        if [[ $missing -gt 0 ]]; then \
+            echo "ERROR: $missing winning bin(s) listed in das_DASTool_summary.tsv were missing from {params.src}" >&2; \
+            exit 1; \
+        fi && \
         date) &> {log}
         """
 
