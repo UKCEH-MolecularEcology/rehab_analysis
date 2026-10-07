@@ -563,9 +563,16 @@ rule extract_grodon_input:
                 fields = line[1:].strip().split(" # ")
                 gene_id = fields[0]
                 start, end, strand = int(fields[1]), int(fields[2]), fields[3]
+                # Per-sample assembly headers are raw MEGAHIT contig names
+                # with NO sample prefix (e.g. ">k87_3982138 flag=..."); the
+                # "{sid}:contig" convention only applies to the pooled
+                # assembly built by concatenating per-sample ones. The old
+                # f"{wildcards.sid}:{contig}" lookup here never matched
+                # anything, so every gene was skipped and every sample's
+                # CDS file came out empty -- 100% of run_gRodon jobs failed
+                # with gRodon's "No highly expressed genes?" error.
                 contig = re.sub(r"_\d+$", "", gene_id)
-                chrom = f"{wildcards.sid}:{contig}"
-                seq = seqs.get(chrom)
+                seq = seqs.get(contig)
                 if seq is None:
                     continue
                 cds = seq[start - 1:end]
