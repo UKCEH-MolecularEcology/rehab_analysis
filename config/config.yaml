@@ -3,17 +3,18 @@
 #
 # Available: "preprocessing", "taxonomy", "assembly", "contig_taxonomy", "sylph",
 #            "kaiju", "coassembly", "annotation", "amr", "eukaryotes", "cluster",
-#            "binning", "coverage", "functions", "seed", "traits", "antismash",
-#            "mgthermometer", "syntracker", "eukaryotic_mags"
+#            "binning", "coverage", "functions", "seed", "traits",
+#            "mgthermometer", "syntracker", "eukaryotic_mags", "bgc", "bgc_families"
 #
-# mgthermometer and syntracker run standard alongside binning (both just
-# need the final dereplicated MAGs). eukaryotic_mags (MAGsGeneration's
+# mgthermometer, syntracker, bgc, and bgc_families run standard alongside
+# binning (all just need the final dereplicated MAGs -- bgc_families needs
+# "bgc" to have run first). eukaryotic_mags (MAGsGeneration's
 # DeepMicroClass/REMAG/BUSCO-euk eukaryotic bin recovery) stays optional --
 # add it to this list only when you want that extra pass over the raw bins.
 #
 # Start minimal and extend once the data acquisition step (see scripts/) has
 # produced config/samples.tsv.
-steps: ["preprocessing", "taxonomy", "assembly", "annotation", "coverage", "functions", "amr", "amrscan", "bgc_amr", "binning", "seed", "mgthermometer", "syntracker"]
+steps: ["preprocessing", "taxonomy", "assembly", "annotation", "coverage", "functions", "amr", "amrscan", "bgc_amr", "binning", "seed", "mgthermometer", "syntracker", "bgc", "bgc_families"]
 
 ############################################################
 # INPUT
@@ -216,9 +217,6 @@ gtdbtk:
   threads: 64
   path: "/hdd0/susbus/databases/gtdbtk/release214"
 
-antismash:
-  threads: 16
-
 sylph:
   threads: 48
   gtdb_url: "http://faust.compbio.cs.cmu.edu/sylph-stuff/gtdb-r220-c200-dbv1.syldb"
@@ -228,17 +226,14 @@ sylph:
 kegg_ids: "ko00521|ko00522|ko00523|ko00311|ko02611|ko01055|ko01051|ko00522"
 
 ############################################################
-# BGC / AMR-marker / growth-rate step (workflow/rules/bgc_amr.smk)
-# Adapted from SOCD's singlem_bgc_Snakefile_no_metadata. GECCO, BiG-SCAPE,
-# and antiSMASH reuse pre-existing named conda envs on this host rather than
-# being rebuilt via --use-conda.
+# AMR-marker / growth-rate step (workflow/rules/bgc_amr.smk)
+# Adapted from SOCD's singlem_bgc_Snakefile_no_metadata. BGC prediction
+# itself (antiSMASH/GECCO/clustering) moved to the MAG level -- see
+# workflow/rules/bgc.smk + bgc_families.smk below.
 
 # Curated KEGG KO -> antibiotic biosynthesis/resistance marker reference
 abx_bgc:
   kegg_ref: "/prj/DECODE/rehab/resources/kegg_abx_bgc.txt"
-
-gecco:
-  bin: "/home/susbus/miniforge3/envs/gecco/bin/gecco"
 
 seqkit:
   bin: "/home/susbus/miniforge3/bin/seqkit"
@@ -255,22 +250,41 @@ busco_euk:
 remag:
   threads: 20
 
-# antiSMASH run directly on per-sample assemblies (contrast with the
-# rules/antismash.smk MAG-level run, which uses its own conda env)
-antismash_assembly:
-  bin: "/home/susbus/miniforge3/envs/antismash/bin/antismash"
-  db: "/hdd0/susbus/databases"
-  threads: 12
-  # Minimum contig length fed to antiSMASH -- a real multi-gene BGC can't fit
-  # intact on much shorter fragments, but hmmsearch cost scales with the
-  # genes annotated on them regardless. See bgc_amr.smk for the SOCD
-  # benchmarking notes this value is based on.
-  min_contig_len: 2500
+############################################################
+# BGC prediction on the final dereplicated MAGs (workflow/rules/bgc.smk),
+# ported from UKCEH-MolecularEcology/skyline's annotations branch
+# (workflow/rules/bgc.smk) -- batched antiSMASH (official container image,
+# databases bundled) + GECCO per MAG, with per-MAG pass/fail tracked via a
+# STATUS sentinel so a batch-level failure threshold doesn't abort the
+# whole run over one bad MAG. Runs on the ~dozens of dereplicated MAGs
+# instead of all 147 per-sample assemblies -- the per-sample antiSMASH
+# pass this replaced took too long at that scale.
+bgc:
+  batch_size: 20
+  antismash:
+    image: "antismash/standalone:8.0.4"
+    parallel: 4
+    cpus_per_mag: 4
+    extra: ""
+  gecco:
+    bin: "/home/susbus/miniforge3/envs/gecco/bin/gecco"
+    parallel: 4
+    cpus_per_mag: 4
+    extra: ""
+  max_failed_frac: 0.05
+  overlap_min_bp: 1
 
-bigscape:
-  bin: "/home/susbus/miniforge3/envs/bigscape/bin/bigscape"
-  pfam_db: "/hdd0/susbus/databases/pfam/35.0/Pfam-A.hmm"
-  threads: 64
+# BGC families: BiG-SLiCE 2 on all antiSMASH regions (single job), replacing
+# BiG-SCAPE -- also ported from skyline's bgc_families.smk.
+bgc_families:
+  threshold: 0.4
+  threads: 16
+  extra: ""
+  models_url: "https://github.com/medema-group/bigslice/releases/download/v2.0.0rc/bigslice-models.2022-11-30.tar.gz"
+  models_md5: "aaabde911ec107d08e5c24f68aaf31d1"
+  # New DB -- per "check my /hdd0/susbus/databases folder for existing
+  # ones, new DBs go in that folder too" instruction.
+  models_dir: "/hdd0/susbus/databases/bigslice/bigslice-models"
 
 # gRodon2 has no existing conda/native install on this host; runs via
 # Singularity (image + temp files under work_dir/containers and work_dir/tmp)

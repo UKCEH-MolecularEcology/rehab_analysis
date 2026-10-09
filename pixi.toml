@@ -129,6 +129,21 @@ channels = ["conda-forge", "bioconda"]
 [feature.multiqc.dependencies]
 multiqc = ">=1.35,<2"
 
+# BiG-SLiCE 2 -- GCF clustering of antiSMASH regions (replaces BiG-SCAPE in
+# the MAG-level BGC pipeline, ported from UKCEH-MolecularEcology/skyline's
+# annotations branch). pyhmmer pinned <0.11: BiG-SLiCE 2.0.2 expects bytes
+# names (hit.name.decode()); pyhmmer >=0.11 returns str.
+[feature.bigslice]
+channels = ["conda-forge", "bioconda"]
+[feature.bigslice.dependencies]
+python = "3.10.*"
+hmmer = "*"
+pip = "*"
+pandas = "*"
+[feature.bigslice.pypi-dependencies]
+bigslice = "==2.0.2"
+pyhmmer = "<0.11"
+
 [environments]
 rosella = { features = ["rosella"], no-default-feature = true }
 vamb = { features = ["vamb"], no-default-feature = true }
@@ -146,3 +161,4 @@ mgthermometer = { features = ["mgthermometer"], no-default-feature = true }
 syntracker = { features = ["syntracker"], no-default-feature = true }
 annotations = { features = ["annotations"], no-default-feature = true }
 multiqc = { features = ["multiqc"], no-default-feature = true }
+bigslice = { features = ["bigslice"], no-default-feature = true }

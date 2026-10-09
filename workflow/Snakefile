@@ -239,12 +239,24 @@ if "traits" in STEPS:
         "status/metathermo.done"
     ]
 
-# antiSMASH
-if "antismash" in STEPS:
+# BGC prediction (antiSMASH + GECCO) on the final dereplicated MAGs, ported
+# from UKCEH-MolecularEcology/skyline's annotations branch. Needs
+# rules.galah (binning block above) and rules.pre_antismash_barrier
+# (bgc_amr block above) to already be defined.
+if "bgc" in STEPS:
     include:
-        "rules/antismash.smk"
+        "rules/bgc.smk"
     TARGETS += [
-        "status/antismash.done"
+        "status/bgc.done"
+    ]
+
+# BGC families (BiG-SLiCE GCF clustering across all MAGs' antiSMASH
+# regions) -- replaces the old BiG-SCAPE pass. Needs "bgc" above.
+if "bgc_families" in STEPS:
+    include:
+        "rules/bgc_families.smk"
+    TARGETS += [
+        "status/bgc_families.done"
     ]
 
 # No targets

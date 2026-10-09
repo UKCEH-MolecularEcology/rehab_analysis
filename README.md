@@ -113,12 +113,13 @@ No SLURM on this host — run locally:
 `config/config.yaml` controls which pipeline `steps` run. Currently enabled:
 `preprocessing`, `taxonomy`, `assembly`, `annotation` (Prodigal), `coverage`,
 `functions` (eggNOG + KEGG antibiotic-biosynthesis marker search + MagicLamp),
-`amr` (RGI), `amrscan`, `bgc_amr`, `binning` (mmseqs2 dedup → 7-binner
-ensemble → DAS_Tool → Rosella refine → Galah dereplication → GTDB-Tk/CheckM2
-quality — see **MAG generation** below), `mgthermometer`, `syntracker`,
-`seed`. See `workflow/rules/*.smk` for the full set mirrored from
-`metag_analyses`; each addition is verified with `snakemake -n` before being
-enabled.
+`amr` (RGI), `amrscan`, `bgc_amr` (ABX markers + growth rate), `binning`
+(mmseqs2 dedup → 7-binner ensemble → DAS_Tool → Rosella refine → Galah
+dereplication → GTDB-Tk/CheckM2 quality — see **MAG generation** below),
+`mgthermometer`, `syntracker`, `bgc`, `bgc_families` (BGC prediction on
+the final MAGs — see **BGC prediction** below), `seed`. See
+`workflow/rules/*.smk` for the full set mirrored from `metag_analyses`;
+each addition is verified with `snakemake -n` before being enabled.
 
 Two pre-existing bugs in the mirrored `metag_analyses` rules were fixed here
 (both blocked `binning` outright, not something introduced by this repo):
@@ -236,30 +237,59 @@ Reuses the pre-existing `amrscan` conda env
 the base miniforge3 python (has pandas/numpy, which that env lacks) — see
 `config/config.yaml`'s `amrscan` section.
 
-## BGC / AMR-marker / growth-rate step (`bgc_amr`)
+## AMR-marker / growth-rate step (`bgc_amr`)
 
 Adapted from the SOCD project's `singlem_bgc_Snakefile_no_metadata`
-(`/prj/DECODE/socd/results/`). Runs per-sample (not per-MAG, unlike
-`rules/antismash.smk`), scoped to samples with eggNOG + coverage already
-computed:
+(`/prj/DECODE/socd/results/`). Runs per-sample, scoped to samples with
+eggNOG + coverage already computed:
 
 - **ABX/KEGG markers** — cross-references eggNOG KO annotations against a
   curated antibiotic biosynthesis/resistance reference
   (`resources/kegg_abx_bgc.txt`), joined with gene coverage. Complements
   (does not replace) `rules/eggnog.smk`'s pathway-keyword-based
   `identify_abx_biosynthesis`.
-- **BGC prediction** — GECCO + antiSMASH (contig-length-filtered,
-  `--genefinding-gff3` reusing existing Prodigal calls, `--minimal
-  --cb-knownclusters` only) on each sample's assembly.
-- **BGC clustering** — BiG-SCAPE 2 across all samples' predicted regions.
 - **Growth rate** — gRodon2 (codon usage bias → average maximal growth
   rate), via a Singularity image (no conda recipe covers Bioconductor +
   CRAN together).
 
-GECCO, antiSMASH, and BiG-SCAPE reuse the pre-existing named conda
-environments on this host (`/home/susbus/miniforge3/envs/{gecco,bigscape,
-antismash}`) rather than being rebuilt — see `config/config.yaml`'s
-`gecco`/`antismash_assembly`/`bigscape` sections to repoint them elsewhere.
+`pre_antismash_barrier` in this file still enforces "antiSMASH runs
+strictly last" for the MAG-level BGC pipeline below, even though BGC
+prediction itself no longer lives in this file (see **BGC prediction**).
+
+## BGC prediction (`bgc`, `bgc_families`)
+
+GECCO + antiSMASH + gene-cluster-family clustering, run on the **final
+dereplicated MAGs** rather than all 147 per-sample assemblies — the
+per-sample version (removed 2026-10-09) took too long at that scale.
+Ported from [UKCEH-MolecularEcology/skyline](https://github.com/UKCEH-MolecularEcology/skyline)'s
+`annotations` branch (`workflow/rules/bgc.smk` + `bgc_families.smk`),
+adapted for this pipeline's single-Snakefile architecture: skyline runs
+BGC prediction as a separate downstream pipeline over an
+already-populated MAG directory (a parse-time `glob_wildcards` suffices
+there); here the final MAG set doesn't exist until `rules.galah` runs in
+this same invocation, so MAG discovery is a checkpoint instead
+(`bgc_mags` in `rules/bgc.smk`).
+
+- **antiSMASH** — the official `antismash/standalone:8.0.4` container
+  image (databases bundled, no separate DB download step), pulled into
+  `containers/`. Runs in batches of MAGs (`bgc.batch_size`, default 20)
+  with several MAGs in parallel per batch (`bgc.antismash.parallel`); a
+  batch only fails outright if more than `bgc.max_failed_frac` (default
+  5%) of its MAGs fail, tracked per-MAG via a `STATUS` sentinel file that
+  also lets a rerun skip MAGs that already finished.
+- **GECCO** — same batching, reusing this project's existing named conda
+  env (`config.yaml`'s `bgc.gecco.bin`) rather than a new one.
+- **antiSMASH vs. GECCO overlap** — regions/clusters matched by MAG +
+  contig + coordinate overlap (`workflow/scripts/bgc_overlap.py`).
+- **BiG-SLiCE 2** (`bgc_families`) — replaces this project's old BiG-SCAPE
+  pass, clustering all MAGs' antiSMASH regions into gene cluster families
+  (GCFs). Runs via pixi (pip-only package, no plain bioconda recipe — see
+  `pixi.toml`'s `bigslice` environment); its HMM models are a new DB under
+  `/hdd0/susbus/databases/bigslice/`, downloaded once. The GCF-level
+  summary optionally joins against `bins/coverage/all_finalbins_contigs_coverage.txt`
+  (per-bin, per-sample summed contig coverage, already computed by
+  `rules/bin_coverage.smk`) as a stand-in for skyline's own CoverM
+  relative-abundance matrix — same shape, not an identical metric.
 
 ## Repo layout
 
@@ -271,14 +301,18 @@ resources/   pipeline reference data (e.g. kegg_abx_bgc.txt), tracked in git
 scripts/     download / concat / manifest / pipeline-runner scripts, plus
              pixi_env.sh (sourced by MAG-generation rules before any `pixi` call)
 workflow/    Snakefile, rules/, envs/, scripts/ (mirrored from metag_analyses,
-             plus rules/bgc_amr.smk adapted from SOCD and
+             plus rules/bgc_amr.smk adapted from SOCD;
              rules/{mags_generation,dereplicate,bin_taxqual,eukaryotes_filter,
-             mgthermometer,syntracker}.smk adapted from michoug/MAGsGeneration)
+             mgthermometer,syntracker}.smk adapted from michoug/MAGsGeneration;
+             rules/{bgc,bgc_families}.smk + scripts/{run_antismash_one.sh,
+             antismash_regions,bigslice_tables,bgc_overlap}.py adapted from
+             UKCEH-MolecularEcology/skyline)
 schemas/     config & sample-sheet JSON schemas
 containers/  Singularity images for newly-installed tools (gitignored)
 pixi.toml    pixi manifest for the MAG-generation module's new binners
-             (VAMB, MetaCAT, etc.) -- scoped to that module only, everything
-             else still uses conda/Singularity
+             (VAMB, MetaCAT, etc.) plus BiG-SLiCE (bgc_families) -- scoped
+             to these modules only, everything else still uses
+             conda/Singularity
 pixi.lock    pinned pixi resolution, tracked for reproducibility
 tools/       pixi's own binary/cache/resolved envs (gitignored, ~27 GB)
 tmp/         scratch space for all tool/Singularity/conda/pixi temp files (gitignored)
