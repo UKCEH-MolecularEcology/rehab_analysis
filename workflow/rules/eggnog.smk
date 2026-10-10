@@ -204,7 +204,7 @@ rule merge_abx_biosynthesis:
         dfs = []
 
         # Read each input file and append the DataFrame to the list
-        for file in input[0]:
+        for file in input:
             df = pd.read_csv(file, sep='\t')
             dfs.append(df)
 
