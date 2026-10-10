@@ -3,7 +3,14 @@ Author: Susheel Bhanu BUSI
 Affiliation: Molecular Ecology group, UKCEH
 Date: [2023-11-20]
 Run: snakemake -s workflow/rules/bin_coverage.smk --use-conda --cores 4 -rp
-Latest modification:
+Latest modification: [2026-10-10] Replaced concatenate_mags -> mags_mapping_all
+    (147 fresh bwa+coverm mapping jobs) -> cat_mag_coverage (147 more) with
+    a single coverm genome --genome-definition call reusing EXISTING_BAMS
+    (already computed for binning against the pooled cat_assembly_filter.fasta
+    in rules/mags_generation.smk) -- CoverM can compute per-genome coverage
+    directly from a BAM aligned to a superset reference plus a contig->genome
+    map, no second alignment pass needed ("When specified, no read mapping
+    algorithm is undertaken" -- confirmed via `coverm genome --full-help`).
 Purpose: Getting coverage for all bins
 """
 
@@ -11,91 +18,16 @@ Purpose: Getting coverage for all bins
 ############################################
 rule bin_coverage:
     input:
-        os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_cov.txt"),
         os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_contigs_coverage.txt")
     output:
         touch("status/bin_coverage.done")
 
 
 ############################################
-# localrules: 
+localrules: genome_definition
 
 
 ############################################
-# CONCATENATING MAGS
-rule concatenate_mags:
-    # bins/all_finalbins (collect_bins' old output, bolting raw concoct_bins
-    # on top of dRep's output) no longer exists -- rules.galah.output.final
-    # (bins/finalbins) already represents the fully-dereplicated 7-binner
-    # ensemble. See rules/dereplicate.smk and rules/bin_taxqual.smk.
-    input:
-        mags=rules.galah.output.final
-    output:
-        os.path.join(RESULTS_DIR, "concat/cat_mags.fa")
-    message:
-        "Concatenating all dereplicated MAGS"
-    shell:
-        "(date && cat {input}/*.fa > {output} && "
-        "sed -i 's/>>s/>s/g' {output} && date)"
-
-rule mags_mapping_all:
-    input:
-        read1=os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R1.fq"),
-        read2=os.path.join(RESULTS_DIR, "preprocessed/reads/{sid}/{sid}_filtered.R2.fq"),
-        cont=rules.concatenate_mags.output
-        #idx=rules.mapping_index.output
-    output:
-        temp(os.path.join(RESULTS_DIR, "bam/cat_mags.fa.{sid}_filtered.R1.fq.bam"))
-    threads:
-        config["mapping"]["threads"]
-    conda:
-        os.path.join(ENV_DIR, "coverm.yaml")
-    params:
-        tmp=os.path.join(RESULTS_DIR, "tmpdir")
-    log:
-        out=os.path.join(RESULTS_DIR, "logs/mapping/cat_mags_{sid}.out.log"),
-        err=os.path.join(RESULTS_DIR, "logs/mapping/cat_mags_{sid}.err.log")
-    message:
-        "Running coverm to produce sorted bams for: {wildcards.sid}"
-    shell:
-        "(date && "
-        "TMPDIR={params.tmp} coverm make -r {input.cont} -t {threads} -o $(dirname {output}) --discard-unmapped -c {input.read1} {input.read2} && "
-        "date) 2> {log.err} > {log.out}"
-
-# COVERAGE
-rule cat_mag_coverage:
-    input:
-        os.path.join(RESULTS_DIR, "bam/cat_mags.fa.{sid}_filtered.R1.fq.bam")
-    output:
-        final=os.path.join(RESULTS_DIR, "bins/coverage/cat_mags_cov_{sid}.txt")
-    conda:
-        os.path.join(ENV_DIR, "coverm.yaml")        
-    threads:
-        config["mapping"]["threads"]
-    priority: 
-        50
-    log:
-        out=os.path.join(RESULTS_DIR, "logs/coverage/cat_mag_coverage_{sid}.out.log"),
-        err=os.path.join(RESULTS_DIR, "logs/coverage/cat_mag_coverage_{sid}.err.log")
-    message:
-        "Estimating coverage for concatenated MAGs: {wildcards.sid}"
-    shell:
-        "(date && coverm contig -b {input} -m trimmed_mean -t {threads} -o {output.final} && date) 2> {log.err} > {log.out}"
-
-rule concat_cat_mag_coverage:
-    input:
-        files = expand(os.path.join(RESULTS_DIR, "bins/coverage/cat_mags_cov_{sid}.txt"), sid= SAMPLES.index),
-        script=os.path.join(SRC_DIR, "mergeTables.pl")
-    output:
-        cov=os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_cov.txt") 
-    log:
-        out=os.path.join(RESULTS_DIR, "logs/concat_cat_mag_coverage.out.log"),
-        err=os.path.join(RESULTS_DIR, "logs/concat_cat_mag_coverage.err.log")
-    message:
-        "Concatenating the coverage files"
-    shell:
-        "(date && perl {input.script} {input.files} {output.cov} && date) 2> {log.err} > {log.out}"
-
 rule get_contigs:
     input:
         bins=rules.galah.output.final,
@@ -111,43 +43,62 @@ rule get_contigs:
     shell:
         "(date && perl {input.src} {input.bins} > {output.contigs} && date) &> {log}"
 
-rule merge_contigs_coverage:
+
+rule genome_definition:
+    # CoverM's --genome-definition wants "genome_name<TAB>contig", no
+    # header -- get_contigs' own output is already "bin\t0_Contig\tlength"
+    # (see get_all_contigs.pl), so this is just dropping the header and
+    # the length column.
     input:
-        contigs=rules.get_contigs.output.contigs,
-        cov=rules.concat_cat_mag_coverage.output.cov
+        contigs=rules.get_contigs.output.contigs
     output:
-        merged=os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_all_contigs_coverage.txt"),
-        grouped=os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_contigs_coverage.txt")
-    log:
-        os.path.join(RESULTS_DIR, "logs/coverage/merge_contigs_coverage.log")
+        os.path.join(RESULTS_DIR, "bins/coverage/genome_definition.tsv")
     message:
-        "Merging the contigs and coverage files for finalbins"
+        "Building the bin->contig genome-definition file for CoverM"
+    shell:
+        "tail -n +2 {input.contigs} | cut -f1,2 > {output}"
+
+
+rule coverm_genome_coverage:
+    input:
+        bam=EXISTING_BAMS,
+        ref=CAT_ASSEMBLY_FILTER,
+        definition=rules.genome_definition.output
+    output:
+        raw=temp(os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_contigs_coverage_raw.txt"))
+    conda:
+        os.path.join(ENV_DIR, "coverm.yaml")
+    threads:
+        config["coverm_genome"]["threads"]
+    log:
+        os.path.join(RESULTS_DIR, "logs/coverage/coverm_genome_coverage.log")
+    message:
+        "Computing per-MAG coverage across all samples (reusing the existing binning BAMs)"
+    shell:
+        "(date && coverm genome -b {input.bam} --reference {input.ref} --genome-definition {input.definition} "
+        "-m trimmed_mean -t {threads} -o {output.raw} && date) &> {log}"
+
+
+rule clean_genome_coverage:
+    # CoverM names each BAM's column after its filename
+    # ("cat_assembly_{sid}.bam Trimmed Mean") -- strip that down to the
+    # bare sample id, matching the old mergeTables.pl-based table's column
+    # naming, and rename the genome column to "bin" to match every other
+    # finalbins table in this project.
+    input:
+        rules.coverm_genome_coverage.output.raw
+    output:
+        os.path.join(RESULTS_DIR, "bins/coverage/all_finalbins_contigs_coverage.txt")
+    message:
+        "Cleaning up CoverM's per-MAG coverage column names"
     run:
+        import re
         import pandas as pd
-        
-        # reading in the contigs list file
-        contigs=pd.read_csv(input.contigs, sep="\t")
 
-        # reading in the coverage file
-        coverage=pd.read_csv(input.cov, sep="\t")
-
-        # Merge the two dataframes on the '0_Contig' column
-        merged_data=pd.merge(contigs, coverage, on='0_Contig', how='inner')
-
-        # Print the merged data
-        print(merged_data)
-
-        # Save the merged data to a new file
-        merged_data.to_csv(output.merged, sep="\t", index=False) 
-
-        # Drop '0_Contig' and 'length' columns
-        merged_data=merged_data.drop(['0_Contig', 'length'], axis=1)
-
-        # Summarize based on 'bin' column
-        summary_df=merged_data.groupby('bin').sum().reset_index()
-
-        # Print the summary DataFrame
-        print(summary_df)
-
-        # Save the summary DataFrame to a new CSV file
-        summary_df.to_csv(output.grouped, sep="\t", index=False)
+        df = pd.read_csv(input[0], sep="\t")
+        df = df.rename(columns={df.columns[0]: "bin"})
+        df.columns = [
+            re.sub(r"^cat_assembly_(.+)\.bam Trimmed Mean$", r"\1", c) if c != "bin" else c
+            for c in df.columns
+        ]
+        df.to_csv(output[0], sep="\t", index=False)

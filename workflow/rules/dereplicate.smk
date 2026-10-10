@@ -26,19 +26,14 @@ rule dereplicate:
 # localrules:
 
 
-############################################
-# Concatetnating the assemblies for binning
-rule ass_cat_drep:
-    input:
-        expand(os.path.join(RESULTS_DIR, "assembly/{sid}/{sid}_modified.fasta"), sid=SAMPLES.index)
-    output:
-        os.path.join(RESULTS_DIR, "assembly/cat_assembly_drep.fasta")  # "/prj/DECODE/socd/results/assembly/modified_cat_assembly_drep.fasta"
-    log:
-        os.path.join(RESULTS_DIR, "logs/assembly/concatenation.log")
-    message:
-        "Concatenating all assemblies"
-    shell:
-        "(date && cat {input} > {output} && date) &> >(tee {log})"
+# (ass_cat_drep removed 2026-10-10: it re-concatenated all 147 samples'
+# assemblies from scratch as DAS_Tool's -c contig reference, duplicating
+# cat_ass_mmseqs2+cat_filter_length's work but WITHOUT the mmseqs2 dedup
+# or length filter those apply -- a mismatch, not just redundant work,
+# since all 7 binners actually binned against the deduplicated+filtered
+# CAT_ASSEMBLY_FILTER. dasTool below now references CAT_ASSEMBLY_FILTER
+# directly, matching what every binner's scaffolds2bin table was computed
+# against.)
 
 
 # Preparing all 7 binners' outputs as DAS_Tool scaffolds2bin tables.
@@ -111,7 +106,7 @@ rule dasTool:
         comebin=rules.prepare_dasTool.output.comebinout,
         semibin=rules.prepare_dasTool.output.semibinout,
         metacat=rules.prepare_dasTool.output.metacatout,
-        cont=rules.ass_cat_drep.output
+        cont=CAT_ASSEMBLY_FILTER
     output:
         os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_summary.tsv")
     conda:

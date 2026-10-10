@@ -158,6 +158,12 @@ mdmcleaner:
 mapping:
   threads: 16
 
+# Single coverm genome call (rules/bin_coverage.smk) over all 147 existing
+# binning BAMs at once -- give it more threads than a typical per-sample
+# mapping job since there's only one of these now instead of 294.
+coverm_genome:
+  threads: 32
+
 metabat2:
   threads: 56
 
