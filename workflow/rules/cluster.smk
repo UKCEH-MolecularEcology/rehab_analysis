@@ -123,24 +123,25 @@ rule cat_ass_mmseqs2:
         "(date && cat {input} > {output} && date) &> >(tee {log})"
 
 rule cat_filter_length:
+    # seqkit instead of the old hand-rolled filter_contigs.py (2026-10-10):
+    # multithreaded via -j, and -m filters purely by sequence length with
+    # no header parsing at all -- the whole class of header-format bugs
+    # filter_contigs.py existed to work around (">{SAMPLE_ID}:{contig}"
+    # vs. bare headers) just doesn't apply to seqkit.
     input:
         rules.cat_ass_mmseqs2.output[0]
     output:
         os.path.join(RESULTS_DIR, "assembly/cat_assembly_filter.fasta")
-    conda:
-        os.path.join(ENV_DIR, "mapping.yaml")
     threads:
         config['filter_length']['threads']
     log:
         os.path.join(RESULTS_DIR, "logs/filter/length.log")
     params:
-        filter=os.path.join(SRC_DIR, "filter_contigs.py")
+        bin=config["seqkit"]["bin"]
     message:
         "Removing contigs less than 1.5K"
     shell:
-        "(date && {params.filter} {input} {output} && date) &> >(tee {log})"
-#        """(date && bioawk -c fastx '{{ if (length($seq) >= 1500) {{ print ">"$name; print $seq }} }}' && date ) &> >(tee {log})"""
-#        "(date && seqkit seq -j {threads} -o {output} -m 1499 {input} && date) &> >(tee {log})"
+        "(date && {params.bin} seq -j {threads} -m 1500 -o {output} {input} && date) &> >(tee {log})"
 
 rule cat_bin_mapping_index:
     input:

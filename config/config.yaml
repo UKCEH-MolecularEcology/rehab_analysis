@@ -150,7 +150,7 @@ rgi:
   db_url: "https://card.mcmaster.ca/latest/data"
 
 filter_length:
-  threads: 4
+  threads: 32
 
 mdmcleaner:
   threads: 48
