@@ -58,29 +58,69 @@ rule setup_rgi_db:
         "rgi database --version --local && "
         "touch {output} && date) &> >(tee {log})"
 
-# Run RGI: Assembly (DNA)
-rule annotation_rgi:
+# Run RGI: Assembly (DNA), chunked
+# NOTE: RGI on the whole concatenated assembly (~48G) runs prodigal single-threaded
+# for days (killed after 23h on 2026-10-16), so split into RGI_CHUNKS pieces and run
+# them in parallel, then merge the per-chunk tables into amr/rgi.txt.
+RGI_CHUNKS = [f"{i:03d}" for i in range(1, config["rgi"]["chunks"] + 1)]
+
+rule rgi_split:
     input:
-        fna=os.path.join(RESULTS_DIR, "assembly/cat_assembly_filter.fasta"),
+        os.path.join(RESULTS_DIR, "assembly/cat_assembly_filter.fasta")
+    output:
+        temp(expand(os.path.join(RESULTS_DIR, "amr/chunks/cat_assembly_filter.part_{chunk}.fasta"), chunk=RGI_CHUNKS))
+    log:
+        os.path.join(RESULTS_DIR, "logs/rgi.split.log")
+    threads:
+        config["filter_length"]["threads"]
+    params:
+        bin=config["seqkit"]["bin"],
+        parts=config["rgi"]["chunks"],
+        outdir=os.path.join(RESULTS_DIR, "amr/chunks")
+    message:
+        "Annotation: RGI: split assembly into chunks"
+    shell:
+        "(date && "
+        "{params.bin} split2 -j {threads} -p {params.parts} -O {params.outdir} {input} && "
+        "date) &> >(tee {log})"
+
+rule rgi_chunk:
+    input:
+        fna=os.path.join(RESULTS_DIR, "amr/chunks/cat_assembly_filter.part_{chunk}.fasta"),
         db=os.path.join(DB_DIR, "rgi/card.json"),
         setup="status/rgi_setup.done" # NOTE: to make sure that the same DB is used for all targets
+    output:
+        txt=temp(os.path.join(RESULTS_DIR, "amr/chunks/rgi.part_{chunk}.txt")),
+        json=temp(os.path.join(RESULTS_DIR, "amr/chunks/rgi.part_{chunk}.json"))
+    log:
+        os.path.join(RESULTS_DIR, "logs/rgi/rgi.part_{chunk}.log")
+    threads:
+        config["rgi"]["chunk_threads"]
+    params:
+        alignment_tool="DIAMOND",
+        prefix=lambda wildcards, output: os.path.splitext(output.txt)[0]
+    conda:
+        os.path.join(ENV_DIR, "rgi.yaml")
+    message:
+        "Annotation: RGI: chunk {wildcards.chunk}"
+    shell:
+        "(date && "
+        # NOTE: https://github.com/arpcard/rgi/issues/93: KeyError: 'snp' --> re-run
+        "(rgi main --input_sequence {input.fna} --output_file {params.prefix} --local -a {params.alignment_tool} --clean --low_quality -n {threads} || "
+        "rgi main --input_sequence {input.fna} --output_file {params.prefix} --local -a {params.alignment_tool} --clean --low_quality -n {threads}) && "
+        "date) &> {log}"
+
+rule annotation_rgi:
+    input:
+        expand(os.path.join(RESULTS_DIR, "amr/chunks/rgi.part_{chunk}.txt"), chunk=RGI_CHUNKS)
     output:
         txt=os.path.join(RESULTS_DIR, "amr/rgi.txt")
     log:
         os.path.join(RESULTS_DIR, "logs/rgi.annotation.log")
-    threads:
-        config["rgi"]["threads"]
-    params:
-        alignment_tool="DIAMOND"
-    conda:
-        os.path.join(ENV_DIR, "rgi.yaml")
     message:
-        "Annotation: RGI: mmseqs_rep_seq_DNA"
+        "Annotation: RGI: merge chunks"
     shell:
         "(date && "
-        "rgi database --version --local && "
-        # NOTE: https://github.com/arpcard/rgi/issues/93: KeyError: 'snp' --> re-run
-        "rgi main --input_sequence {input.fna} --output_file $(dirname {output})/$(basename -s '.txt' {output}) --local -a {params.alignment_tool} --clean --low_quality -n {threads} || "
-        "rgi main --input_sequence {input.fna} --output_file $(dirname {output})/$(basename -s '.txt' {output}) --local -a {params.alignment_tool} --clean --low_quality -n {threads} && "
-        "date) &> >(tee {log})"
-
+        "head -n 1 {input[0]} > {output.txt} && "
+        "for f in {input}; do tail -n +2 $f >> {output.txt}; done && "
+        "date) &> {log}"

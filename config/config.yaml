@@ -147,6 +147,8 @@ mmseqs2:
 # AMR — core to REHAB (antibiotic resistance gene transmission study)
 rgi:
   threads: 64
+  chunks: 64        # split cat_assembly_filter.fasta into this many pieces
+  chunk_threads: 4  # threads per chunk (prodigal is single-threaded; 16 chunks run at once on 64 cores)
   db_url: "https://card.mcmaster.ca/latest/data"
 
 filter_length:
