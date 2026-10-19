@@ -290,7 +290,12 @@ rule comebin:
         status=$? && set -e && \
         if [[ ! -s {output} ]]; then \
             mkdir -p "$(dirname {output})" && : > {output} && \
-            echo "COMEBin produced no bins; created empty output file {output}"; \
+            if [[ $status -ne 0 ]]; then \
+                msg="WARNING: COMEBin exited with status $status and produced no output; treating the pooled assembly as 0 bins"; \
+            else \
+                msg="COMEBin produced no bins; created empty output file {output}"; \
+            fi && \
+            echo "$msg" && echo "$msg" >&2; \
         elif [[ $status -ne 0 ]]; then exit $status; fi && \
         date) &> {log}
         """
@@ -355,7 +360,7 @@ rule metacat_install:
     shell:
         """
         (date && source {PIXI_ENV_SCRIPT} && \
-        pixi r -e metacat MetaCAT --version && \
+        pixi r -e metacat python -c "import importlib.metadata as m; v = m.version('metacat'); assert v == '1.0.7', f'metacat {{v}} installed, expected 1.0.7'" && \
         date) &> {log}
         """
 

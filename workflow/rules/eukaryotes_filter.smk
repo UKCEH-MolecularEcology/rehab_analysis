@@ -371,7 +371,12 @@ rule busco_multiqc_euk:
         """
         (date && source {PIXI_ENV_SCRIPT} && \
         rm -rf {output.folder} && mkdir -p {output.folder}/multiqc_data && \
-        pixi r -e multiqc multiqc $(dirname $(dirname {input[0]}))/busco --verbose --ignore auto_lineage/ -o {output.folder} --force || true && \
+        busco_dir=$(dirname $(dirname {input[0]}))/busco && \
+        if [ -n "$(find $busco_dir -name 'short_summary*.txt' -print -quit 2>/dev/null)" ]; then \
+            pixi r -e multiqc multiqc $busco_dir --verbose --ignore auto_lineage/ -o {output.folder} --force; \
+        else \
+            echo "No BUSCO summaries found in $busco_dir; writing empty MultiQC outputs."; \
+        fi && \
         if [ ! -s {output.html} ]; then printf '%s\\n' '<!doctype html>' '<html><body><p>No BUSCO results for eukaryotic MAGs.</p></body></html>' > {output.html}; fi && \
         if [ ! -s {output.stats} ]; then printf "Sample\\tbusco-complete\\tbusco-complete_single_copy\\tbusco-fragmented\\tbusco-missing\\n" > {output.stats}; fi && \
         if [ ! -s {output.source} ]; then printf "Sample Name\\tSource\\n" > {output.source}; fi && \
@@ -396,7 +401,8 @@ rule quality_eukaryotes:
 
         df = pd.read_csv(input.stats, sep="\t")
         src = pd.read_csv(input.source, sep="\t")
-        busco_total = df.get("busco-complete_single_copy", 0) + df.get("busco-fragmented", 0) + df.get("busco-missing", 0)
+        # busco-complete = single copy + duplicated
+        busco_total = df.get("busco-complete", 0) + df.get("busco-fragmented", 0) + df.get("busco-missing", 0)
         if "busco-complete_duplicated" in df.columns:
             duplicated = df["busco-complete_duplicated"]
         else:
