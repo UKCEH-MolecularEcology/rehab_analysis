@@ -3,7 +3,11 @@ Author: Susheel Bhanu BUSI
 Affiliation: Molecular Ecology group, UKCEH
 Date: [2023-11-20]
 Run: snakemake -s workflow/rules/dereplicate.smk --use-conda --cores 4 -rp
-Latest modification: [2026-10-04] Upgraded from a 2-way (MetaBAT2+CONCOCT)
+Latest modification: [2026-10-30] Replaced DAS_Tool (dasTool +
+    filter_dastool_bins + checkm2_dastool) with Binette (binette_run +
+    checkm2_binette), ported from michoug/MAGsGeneration#37; the
+    prepare_dasTool contig2bin tables are reused unchanged.
+    Earlier: [2026-10-04] Upgraded from a 2-way (MetaBAT2+CONCOCT)
     to a 7-way DAS_Tool ensemble (adds Rosella, TaxVAMB, COMEBin, SemiBin2,
     MetaCAT from rules/mags_generation.smk), added a Rosella refine pass on
     the DAS_Tool consensus bins, and switched dereplication from dRep to
@@ -97,7 +101,13 @@ rule prepare_dasTool:
         """
 
 
-rule dasTool:
+rule binette_run:
+    # Binette (michoug/MAGsGeneration#37) replaces DAS_Tool as the
+    # consensus step: it takes the same per-binner contig2bin tables
+    # prepared above, scores/merges candidate bins with its own internal
+    # CheckM2 run, and writes only its final non-redundant selection --
+    # so the old filter_dastool_bins step (DAS_Tool's --write_bins also
+    # wrote every rejected candidate) is no longer needed.
     input:
         metabat=rules.prepare_dasTool.output.metabatout,
         concoct=rules.prepare_dasTool.output.concoctout,
@@ -106,78 +116,29 @@ rule dasTool:
         comebin=rules.prepare_dasTool.output.comebinout,
         semibin=rules.prepare_dasTool.output.semibinout,
         metacat=rules.prepare_dasTool.output.metacatout,
-        cont=CAT_ASSEMBLY_FILTER
+        cont=CAT_ASSEMBLY_FILTER,
+        # checkm_db is defined further down this file, so reference its output by path
+        db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd")
     output:
-        os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_summary.tsv")
-    conda:
-        os.path.join(ENV_DIR, "dastool.yaml")
+        quality=os.path.join(RESULTS_DIR, "bins/binette/final_bins_quality_reports.tsv"),
+        bins=directory(os.path.join(RESULTS_DIR, "bins/binette/final_bins"))
     log:
-        out=os.path.join(RESULTS_DIR, "logs/dasTool.out.log"),
-        err=os.path.join(RESULTS_DIR, "logs/dasTool.err.log")
+        out=os.path.join(RESULTS_DIR, "logs/binette.out.log"),
+        err=os.path.join(RESULTS_DIR, "logs/binette.err.log")
     threads:
-        config["dasTool"]["threads"]
+        config["binette"]["threads"]
     params:
-        src=config["dasTool"]["bin"]
+        db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd")
     message:
-        "Running DasTool (7-way ensemble)"
+        "Running Binette (7-way ensemble)"
     shell:
-        "(date && "
-        "{params.src} -i {input.metabat},{input.concoct},{input.rosella},{input.taxvamb},{input.comebin},{input.semibin},{input.metacat} "
-        "-l metabat,concoct,rosella,taxvamb,comebin,semibin,metacat "
-        "--score_threshold -42 -c {input.cont} -o $(dirname {output})/das --write_bins --search_engine diamond --threads {threads} && "
-        "date) 2> {log.err} > {log.out}"
-
-
-rule filter_dastool_bins:
-    # DAS_Tool's --write_bins writes a FASTA for every candidate bin it
-    # evaluated (including SCG-split "_sub" candidates and original bins
-    # that lost every contig to a better-scoring competitor), not just its
-    # final non-redundant selection. Only the bin names listed in
-    # das_DASTool_summary.tsv are DAS_Tool's actual answer -- feeding the
-    # raw das_DASTool_bins/ directory to CheckM2/Rosella refine (as both
-    # downstream rules did before this fix) lets rejected bins that still
-    # score well on their own (e.g. a near-complete bin that lost its
-    # contigs to a different winning bin) pass every quality gate and
-    # reach Galah as a bogus "distinct" genome that still shares raw
-    # contigs with the bin that actually won them. Ported from
-    # michoug/MAGsGeneration#34's filter_dastool_bins (the one piece of
-    # that PR adopted here -- its larger binner-selection/ranking feature
-    # was left for later, still unmerged upstream as of 2026-10-07).
-    input:
-        summary=rules.dasTool.output
-    output:
-        directory(os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins_filtered"))
-    log:
-        os.path.join(RESULTS_DIR, "logs/filter_dastool_bins.log")
-    params:
-        ext="fa",
-        src=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins")
-    message:
-        "Keeping only DAS_Tool's selected bins"
-    shell:
-        # Process substitution (not a trailing pipe) so `missing` set inside
-        # the loop survives into the post-loop check -- a pipe would run the
-        # loop in a subshell and silently discard the counter. Hardened to a
-        # hard error (matching michoug/MAGsGeneration#34's latest commits,
-        # 2026-10-07) rather than a WARNING: DAS_Tool's own summary naming a
-        # bin its own --write_bins didn't produce means something is
-        # actually wrong, not something to quietly skip past.
         """
-        (date && mkdir -p {output} && \
-        missing=0 && \
-        while read -r bin; do \
-            if [[ -f "{params.src}/$bin.{params.ext}" ]]; then \
-                cp "{params.src}/$bin.{params.ext}" {output}/; \
-            else \
-                echo "ERROR: expected winning bin file missing: {params.src}/$bin.{params.ext}" >&2; \
-                missing=$((missing + 1)); \
-            fi; \
-        done < <(tail -n +2 {input.summary} | cut -f1) && \
-        if [[ $missing -gt 0 ]]; then \
-            echo "ERROR: $missing winning bin(s) listed in das_DASTool_summary.tsv were missing from {params.src}" >&2; \
-            exit 1; \
-        fi && \
-        date) &> {log}
+        (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
+        rm -rf $(dirname {output.quality}) && \
+        pixi r -e binette binette -b {input.metabat} {input.concoct} {input.rosella} {input.taxvamb} {input.comebin} {input.semibin} {input.metacat} \
+            -c {input.cont} -o $(dirname {output.quality}) -t {threads} --checkm2_db {params.db} \
+            --min_completeness 50 --max_length 20000000 --verbose && \
+        date) 2> {log.err} > {log.out}
         """
 
 
@@ -202,41 +163,40 @@ rule checkm_db:
     shell:
         "(date && checkm2 database --download --path $(dirname $(dirname {output})) && date) &> >(tee {log})"
 
-rule checkm2_dastool:
+rule checkm2_binette:
+    # Binette already runs CheckM2 internally to score and select its final
+    # bins, so re-running `checkm2 predict` on them would redo the same work.
+    # Reformat Binette's own report into CheckM2's native quality_report.tsv
+    # schema (Name/Completeness/Contamination) for rosella refine below.
     input:
-        bins=rules.filter_dastool_bins.output,
-        db=rules.checkm_db.output[0]
+        tsv=rules.binette_run.output.quality
     output:
-        tsv=os.path.join(RESULTS_DIR, "bins/checkm2_dastool/quality_report.tsv")
-    conda:
-        "/hdd0/susbus/tools/conda_envs/checkm2"
+        tsv=os.path.join(RESULTS_DIR, "bins/checkm2_binette/quality_report.tsv")
     log:
-        os.path.join(RESULTS_DIR, "logs/checkm2_dastool.log")
-    threads:
-        config["checkm"]["threads"]
+        os.path.join(RESULTS_DIR, "logs/checkm2_binette.log")
     params:
-        ext=config["checkm"]["extension"],
-        db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd"),
-        bins_dir=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins_filtered")
+        script=os.path.join(config["work_dir"], "scripts/binette_quality_to_checkm2.py")
     message:
-        "Running CheckM2 on the DAS_Tool consensus bins (pre-refine)"
+        "Reformatting Binette's quality report into CheckM2's native schema"
     shell:
-        "(date && mkdir -p $(dirname {output.tsv}) && "
-        "export CHECKM2DB={params.db} && "
-        "checkm2 predict --threads {threads} -x {params.ext} --input {params.bins_dir} --output-directory $(dirname {output.tsv}) --force && "
-        "date) &> {log}"
+        """
+        (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
+        mkdir -p $(dirname {output.tsv}) && \
+        pixi r -e binette python {params.script} --binette-tsv {input.tsv} --out {output.tsv} && \
+        date) &> {log}
+        """
 
 
 ############################################
-# Rosella refine -- a second pass over the DAS_Tool consensus bins using
+# Rosella refine -- a second pass over the Binette consensus bins using
 # Rosella's own refine mode (density-based re-clustering, informed by
 # CheckM2 quality), matching the reference repo's refine.smk.
 rule rosella_refine:
     input:
         cont=CAT_ASSEMBLY_FILTER,
         bam=EXISTING_BAMS,
-        check=rules.checkm2_dastool.output.tsv,
-        bins=rules.filter_dastool_bins.output
+        check=rules.checkm2_binette.output.tsv,
+        bins=rules.binette_run.output.bins
     output:
         done=touch(os.path.join(RESULTS_DIR, "bins/refine/rosella_refine.done")),
         dir=directory(os.path.join(RESULTS_DIR, "bins/refine"))
@@ -245,9 +205,9 @@ rule rosella_refine:
     threads:
         config["rosella"]["threads"]
     params:
-        bins_dir=os.path.join(RESULTS_DIR, "bins/dastool/das_DASTool_bins_filtered")
+        bins_dir=os.path.join(RESULTS_DIR, "bins/binette/final_bins")
     message:
-        "Refining DAS_Tool consensus bins with Rosella"
+        "Refining Binette consensus bins with Rosella"
     shell:
         """
         (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \

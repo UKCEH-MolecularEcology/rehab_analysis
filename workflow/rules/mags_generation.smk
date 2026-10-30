@@ -326,7 +326,7 @@ rule semibin:
         """
         (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
         rm -rf "$(dirname {output})" && \
-        pixi r -e semibin SemiBin2 single_easy_bin -i {input.cont} -b {input.bam} -o "$(dirname {output})" -t {threads} --no-recluster --minfasta 200000 && \
+        pixi r -e semibin SemiBin2 single_easy_bin -i {input.cont} -b {input.bam} -o "$(dirname {output})" -t {threads} --no-recluster --minfasta-kbs 200 && \
         bins_dir="$(dirname {output})/output_bins" && \
         : > {output} && \
         if compgen -G "$bins_dir/*.fa.gz" > /dev/null 2>&1; then \

@@ -207,8 +207,11 @@ galah:
   comp: 70
   cont: 10
 
-dasTool:
+dasTool:   # legacy: superseded by binette below
   bin: "/hdd0/susbus/tools/DAS_Tool/DAS_Tool"
+  threads: 64
+
+binette:
   threads: 64
 
 checkm:
