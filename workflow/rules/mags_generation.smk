@@ -56,9 +56,38 @@ localrules: mmseqs_gtdb_db, metacat_install
 
 ############################################
 # Rosella -- density-based binner using UMAP + HDBSCAN on composition+coverage
+rule rosella_clean_assembly:
+    # Rosella's refine step (run automatically at the end of `rosella
+    # recover`) joins its k-mer table and coverage table by contig name. The
+    # k-mer table keeps the full FASTA header ("NAME flag=0 multi=.. len=..",
+    # megahit style) while the BAM-derived coverage table only has the first
+    # token, so the join comes out empty and every refine call dies with
+    # "ValueError: Found array with 0 feature(s)" -- which cost a ~33h
+    # rosella run on 2026-10-27 (Snakemake then deleted the output dir).
+    # Give Rosella an ID-only copy instead of touching the shared
+    # CAT_ASSEMBLY_FILTER (an mtime change there would re-trigger every
+    # downstream job). Contig names are unchanged, so BAMs still match.
+    input:
+        CAT_ASSEMBLY_FILTER
+    output:
+        os.path.join(RESULTS_DIR, "bins/rosella_input/cat_assembly_filter.fasta")
+    log:
+        os.path.join(RESULTS_DIR, "logs/rosella_clean_assembly.log")
+    threads:
+        config["filter_length"]["threads"]
+    params:
+        bin=config["seqkit"]["bin"]
+    message:
+        "Stripping FASTA header descriptions for Rosella"
+    shell:
+        "(date && mkdir -p $(dirname {output}) && "
+        "{params.bin} seq -j {threads} -i -o {output} {input} && "
+        "date) &> {log}"
+
+
 rule rosella:
     input:
-        cont=CAT_ASSEMBLY_FILTER,
+        cont=rules.rosella_clean_assembly.output[0],
         bam=EXISTING_BAMS
     output:
         done=touch(os.path.join(RESULTS_DIR, "bins/rosella/rosella_bins.done")),

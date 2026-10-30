@@ -193,7 +193,7 @@ rule checkm2_binette:
 # CheckM2 quality), matching the reference repo's refine.smk.
 rule rosella_refine:
     input:
-        cont=CAT_ASSEMBLY_FILTER,
+        cont=rules.rosella_clean_assembly.output[0],
         bam=EXISTING_BAMS,
         check=rules.checkm2_binette.output.tsv,
         bins=rules.binette_run.output.bins
@@ -205,15 +205,19 @@ rule rosella_refine:
     threads:
         config["rosella"]["threads"]
     params:
-        bins_dir=os.path.join(RESULTS_DIR, "bins/binette/final_bins")
+        bins_dir=os.path.join(RESULTS_DIR, "bins/binette/final_bins"),
+        seqkit=config["seqkit"]["bin"]
     message:
         "Refining Binette consensus bins with Rosella"
     shell:
         """
         (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
         rm -rf {output.dir} && mkdir -p {output.dir} && \
+        clean_dir={output.dir}_input && rm -rf $clean_dir && mkdir -p $clean_dir && \
+        for f in {params.bins_dir}/*.fa; do {params.seqkit} seq -i -o $clean_dir/$(basename $f) $f; done && \
         pixi r -e rosella rosella refine --min-bin-size 200000 --checkm-results {input.check} \
-            -d {params.bins_dir} --max-contamination 15 -x fa -b {input.bam} -r {input.cont} --threads {threads} -o {output.dir} && \
+            -d $clean_dir --max-contamination 15 -x fa -b {input.bam} -r {input.cont} --threads {threads} -o {output.dir} && \
+        rm -rf $clean_dir && \
         date) &> {log}
         """
 
