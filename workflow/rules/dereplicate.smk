@@ -3,7 +3,9 @@ Author: Susheel Bhanu BUSI
 Affiliation: Molecular Ecology group, UKCEH
 Date: [2023-11-20]
 Run: snakemake -s workflow/rules/dereplicate.smk --use-conda --cores 4 -rp
-Latest modification: [2026-10-30] Replaced DAS_Tool (dasTool +
+Latest modification: [2026-10-31] Dropped COMEBin from the ensemble (CPU
+    training on 15M contigs is ~4h/epoch, i.e. weeks); now 6-way.
+    Earlier: [2026-10-30] Replaced DAS_Tool (dasTool +
     filter_dastool_bins + checkm2_dastool) with Binette (binette_run +
     checkm2_binette), ported from michoug/MAGsGeneration#37; the
     prepare_dasTool contig2bin tables are reused unchanged.
@@ -40,7 +42,7 @@ rule dereplicate:
 # against.)
 
 
-# Preparing all 7 binners' outputs as DAS_Tool scaffolds2bin tables.
+# Preparing all 6 binners' outputs as DAS_Tool scaffolds2bin tables.
 # metabat/concoct: unchanged from the original 2-way ensemble.
 # rosella/taxvamb/metacat: converted via Fasta_to_Contig2Bin.sh (same
 #   helper DAS_Tool itself ships) directly from each tool's own per-bin
@@ -50,9 +52,9 @@ rule dereplicate:
 #   (it fed MetaCAT's .done marker file -- an empty touch-file, not real
 #   data -- to its scaffolds2bin conversion; using the actual Bins/
 #   directory here instead).
-# comebin/semibin: perl-reformatted directly from each tool's own
+# semibin: perl-reformatted directly from the tool's own
 #   contig/cluster assignment table, matching the reference repo's exact
-#   logic (not independently re-verified against real COMEBin/SemiBin2
+#   logic (not independently re-verified against real SemiBin2
 #   output yet, since binning hasn't run in this pipeline -- flagging
 #   this assumption for whoever first sees real output from this step).
 rule prepare_dasTool:
@@ -61,7 +63,6 @@ rule prepare_dasTool:
         concoct=rules.concoct.output,
         rosella=rules.rosella.output.dir,
         taxvamb=rules.taxvamb.output,
-        comebin=rules.comebin.output,
         semibin=rules.semibin.output,
         metacat=rules.metacat_cluster.output.folder,
     output:
@@ -69,7 +70,6 @@ rule prepare_dasTool:
         concoctout=os.path.join(RESULTS_DIR, "bins/dastool/concoct_das.tsv"),
         rosellaout=os.path.join(RESULTS_DIR, "bins/dastool/rosella_das.tsv"),
         taxvambout=os.path.join(RESULTS_DIR, "bins/dastool/taxvamb_das.tsv"),
-        comebinout=os.path.join(RESULTS_DIR, "bins/dastool/comebin_das.tsv"),
         semibinout=os.path.join(RESULTS_DIR, "bins/dastool/semibin_das.tsv"),
         metacatout=os.path.join(RESULTS_DIR, "bins/dastool/metacat_das.tsv"),
     params:
@@ -81,7 +81,7 @@ rule prepare_dasTool:
         out=os.path.join(RESULTS_DIR, "logs/prepare_dasTool.out.log"),
         err=os.path.join(RESULTS_DIR, "logs/prepare_dasTool.err.log")
     message:
-        "Preparing files for DasTool (7-way ensemble)"
+        "Preparing contig2bin tables (6-way ensemble)"
     shell:
         """
         (date && mkdir -p $(dirname {output.metabatout}) && \
@@ -93,7 +93,6 @@ rule prepare_dasTool:
         perl -pe 's/rosella_(bin|refined)_/{params.value}_rosella_/g' {output.rosellaout} > t2.txt && mv t2.txt {output.rosellaout} && \
         {params.src} -e fna -i $(dirname {input.taxvamb})/bins > {output.taxvambout} && \
         perl -pe 's/\t/\t{params.value}_taxvamb_/g' {output.taxvambout} > t3.txt && mv t3.txt {output.taxvambout} && \
-        perl -pe 's/\tgroup/\t{params.value}_comebin_/g' {input.comebin} > {output.comebinout} && \
         perl -pe 's/\t/\t{params.value}_semibin_/g' {input.semibin} | tail -n +2 > {output.semibinout} && \
         {params.src} -e fasta -i {input.metacat} > {output.metacatout} && \
         perl -pe 's/metacat\\./{params.value}_metacat_/g' {output.metacatout} > t4.txt && mv t4.txt {output.metacatout} && \
@@ -113,7 +112,6 @@ rule binette_run:
         concoct=rules.prepare_dasTool.output.concoctout,
         rosella=rules.prepare_dasTool.output.rosellaout,
         taxvamb=rules.prepare_dasTool.output.taxvambout,
-        comebin=rules.prepare_dasTool.output.comebinout,
         semibin=rules.prepare_dasTool.output.semibinout,
         metacat=rules.prepare_dasTool.output.metacatout,
         cont=CAT_ASSEMBLY_FILTER,
@@ -130,12 +128,12 @@ rule binette_run:
     params:
         db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd")
     message:
-        "Running Binette (7-way ensemble)"
+        "Running Binette (6-way ensemble)"
     shell:
         """
         (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
         rm -rf $(dirname {output.quality}) && \
-        pixi r -e binette binette -b {input.metabat} {input.concoct} {input.rosella} {input.taxvamb} {input.comebin} {input.semibin} {input.metacat} \
+        pixi r -e binette binette -b {input.metabat} {input.concoct} {input.rosella} {input.taxvamb} {input.semibin} {input.metacat} \
             -c {input.cont} -o $(dirname {output.quality}) -t {threads} --checkm2_db {params.db} \
             --min_completeness 50 --max_length 20000000 --verbose && \
         date) 2> {log.err} > {log.out}

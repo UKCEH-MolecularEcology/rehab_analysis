@@ -43,7 +43,6 @@ rule mags_generation:
     input:
         os.path.join(RESULTS_DIR, "bins/rosella/rosella_bins.done"),
         os.path.join(RESULTS_DIR, "bins/taxvamb/vaevae_clusters_unsplit.tsv"),
-        os.path.join(RESULTS_DIR, "bins/comebin/comebin_res/comebin_res.tsv"),
         os.path.join(RESULTS_DIR, "bins/semibin/contig_bins.tsv"),
         os.path.join(RESULTS_DIR, "bins/metacat/metacat.done"),
     output:
