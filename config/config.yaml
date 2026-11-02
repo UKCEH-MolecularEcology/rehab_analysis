@@ -213,6 +213,15 @@ dasTool:   # legacy: superseded by binette below
 
 binette:
   threads: 64
+  max_contamination: 20   # CheckM2 %, bins above this are dropped; GUNC step then filters to gunc.max_contamination
+
+# GUNC chimerism filter on the Binette bins (replaces the Rosella refine step,
+# MAGsGeneration#40). Database is downloaded from Zenodo into db_dir on first run.
+gunc:
+  threads: 20
+  database: "progenomes_3"   # progenomes_3 (GUNC default), progenomes_2.1, gtdb_95 or gtdb_214
+  db_dir: "/hdd0/susbus/databases/gunc"
+  max_contamination: 10
 
 checkm:
   threads: 64

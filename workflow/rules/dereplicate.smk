@@ -3,7 +3,10 @@ Author: Susheel Bhanu BUSI
 Affiliation: Molecular Ecology group, UKCEH
 Date: [2023-11-20]
 Run: snakemake -s workflow/rules/dereplicate.smk --use-conda --cores 4 -rp
-Latest modification: [2026-10-31] Dropped COMEBin from the ensemble (CPU
+Latest modification: [2026-11-02] Replaced the Rosella refine pass with a GUNC
+    chimerism filter (gunc_run + gunc_filter, MAGsGeneration#40); Binette
+    now also caps contamination (binette.max_contamination).
+    Earlier: [2026-10-31] Dropped COMEBin from the ensemble (CPU
     training on 15M contigs is ~4h/epoch, i.e. weeks); now 6-way.
     Earlier: [2026-10-30] Replaced DAS_Tool (dasTool +
     filter_dastool_bins + checkm2_dastool) with Binette (binette_run +
@@ -126,7 +129,8 @@ rule binette_run:
     threads:
         config["binette"]["threads"]
     params:
-        db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd")
+        db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd"),
+        max_contamination=config["binette"]["max_contamination"]
     message:
         "Running Binette (6-way ensemble)"
     shell:
@@ -135,7 +139,7 @@ rule binette_run:
         rm -rf $(dirname {output.quality}) && \
         pixi r -e binette binette -b {input.metabat} {input.concoct} {input.rosella} {input.taxvamb} {input.semibin} {input.metacat} \
             -c {input.cont} -o $(dirname {output.quality}) -t {threads} --checkm2_db {params.db} \
-            --min_completeness 50 --max_length 20000000 --verbose && \
+            --min_completeness 50 --max_contamination {params.max_contamination} --max_length 20000000 --verbose && \
         date) 2> {log.err} > {log.out}
         """
 
@@ -189,33 +193,137 @@ rule checkm2_binette:
 # Rosella refine -- a second pass over the Binette consensus bins using
 # Rosella's own refine mode (density-based re-clustering, informed by
 # CheckM2 quality), matching the reference repo's refine.smk.
-rule rosella_refine:
-    input:
-        cont=rules.rosella_clean_assembly.output[0],
-        bam=EXISTING_BAMS,
-        check=rules.checkm2_binette.output.tsv,
-        bins=rules.binette_run.output.bins
+# GUNC database. Zenodo records and md5 sums are those of GUNC 1.1.1
+# (gunc/gunc_database.py), as in MAGsGeneration#40.
+GUNC_DOWNLOADS = {
+    "progenomes_2.1": (
+        "https://zenodo.org/records/19631736/files/gunc_db_progenomes2.1.dmnd.gz",
+        "bc93a855e0760aad5c4e5f2d0e26da46",
+        "447c9330056b02f29f30fe81fe4af4eb",
+    ),
+    "progenomes_3": (
+        "https://zenodo.org/records/19631883/files/gunc_db_progenomes3.dmnd.gz",
+        "a26b3be496017f291eece27740d0f37f",
+        "b1a9347d219a632e9ecf4652dee9bdd1",
+    ),
+    "gtdb_95": (
+        "https://zenodo.org/records/19631804/files/gunc_db_gtdb95.dmnd.gz",
+        "14ed95a2fb1360925e28b7b55df14574",
+        "3b502dc047efaafb9831a5eaec7617fd",
+    ),
+    "gtdb_214": (
+        "https://zenodo.org/records/19632326/files/gunc_db_gtdb214.dmnd.gz",
+        "3933007d83a7a85e4672295ee1f9d91f",
+        "ac4d6304cab3d62a396703eeb039d3b7",
+    ),
+}
+GUNC_CFG = config["gunc"]
+if GUNC_CFG["database"] not in GUNC_DOWNLOADS:
+    raise ValueError(
+        f"gunc.database must be one of {sorted(GUNC_DOWNLOADS)}, got {GUNC_CFG['database']!r}"
+    )
+GUNC_URL, GUNC_GZ_MD5, GUNC_DMND_MD5 = GUNC_DOWNLOADS[GUNC_CFG["database"]]
+GUNC_DB = os.path.join(GUNC_CFG["db_dir"], os.path.basename(GUNC_URL)[: -len(".gz")])
+
+
+rule gunc_download:
     output:
-        done=touch(os.path.join(RESULTS_DIR, "bins/refine/rosella_refine.done")),
-        dir=directory(os.path.join(RESULTS_DIR, "bins/refine"))
+        GUNC_DB + ".gz"
     log:
-        os.path.join(RESULTS_DIR, "logs/rosella_refine.log")
-    threads:
-        config["rosella"]["threads"]
+        os.path.join(RESULTS_DIR, "logs/gunc_download.log")
+    threads: 1
     params:
-        bins_dir=os.path.join(RESULTS_DIR, "bins/binette/final_bins"),
-        seqkit=config["seqkit"]["bin"]
+        url=GUNC_URL,
+        md5=GUNC_GZ_MD5
     message:
-        "Refining Binette consensus bins with Rosella"
+        "Downloading the GUNC database"
+    shell:
+        """
+        (date && mkdir -p $(dirname {output}) && \
+        wget --tries=3 --waitretry=30 --timeout=120 -O {output}.tmp {params.url} && \
+        echo "{params.md5}  {output}.tmp" | md5sum -c - && \
+        mv {output}.tmp {output} && \
+        date) &> {log}
+        """
+
+
+rule gunc_db:
+    input:
+        rules.gunc_download.output
+    output:
+        GUNC_DB
+    log:
+        os.path.join(RESULTS_DIR, "logs/gunc_db.log")
+    threads: 1
+    params:
+        md5=GUNC_DMND_MD5
+    message:
+        "Decompressing the GUNC database"
+    shell:
+        """
+        (date && gzip -dc {input} > {output}.tmp && \
+        echo "{params.md5}  {output}.tmp" | md5sum -c - && \
+        mv {output}.tmp {output} && \
+        date) &> {log}
+        """
+
+
+# GUNC chimerism check on the Binette bins. Replaces the Rosella refine pass
+# (MAGsGeneration#40): bins flagged chimeric (pass.GUNC False) or above
+# gunc.max_contamination are dropped by gunc_filter below.
+rule gunc_run:
+    input:
+        bins=rules.binette_run.output.bins,
+        db=GUNC_DB
+    output:
+        os.path.join(RESULTS_DIR, "bins/refine/gunc/GUNC.maxCSS_level.tsv")
+    log:
+        os.path.join(RESULTS_DIR, "logs/gunc_run.log")
+    threads:
+        GUNC_CFG["threads"]
+    params:
+        ext=".fa"
+    message:
+        "Running GUNC on the Binette bins"
     shell:
         """
         (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
-        rm -rf {output.dir} && mkdir -p {output.dir} && \
-        clean_dir={output.dir}_input && rm -rf $clean_dir && mkdir -p $clean_dir && \
-        for f in {params.bins_dir}/*.fa; do {params.seqkit} seq -i -o $clean_dir/$(basename $f) $f; done && \
-        pixi r -e rosella rosella refine --min-bin-size 200000 --checkm-results {input.check} \
-            -d $clean_dir --max-contamination 15 -x fa -b {input.bam} -r {input.cont} --threads {threads} -o {output.dir} && \
-        rm -rf $clean_dir && \
+        outdir=$(dirname {output}) && rm -rf $outdir && mkdir -p $outdir/tmp && \
+        if compgen -G "{input.bins}/*{params.ext}" > /dev/null; then \
+            pixi r -e gunc gunc run --input_dir {input.bins} --file_suffix {params.ext} --db_file {input.db} \
+                --threads {threads} --out_dir $outdir --temp_dir $outdir/tmp && \
+            cp $outdir/GUNC.*.maxCSS_level.tsv {output}; \
+        else \
+            echo "WARNING: no bins in {input.bins}, writing an empty GUNC table" >&2 && \
+            printf 'genome\tpass.GUNC\n' > {output}; \
+        fi && \
+        rm -rf $outdir/tmp && \
+        date) &> {log}
+        """
+
+
+rule gunc_filter:
+    input:
+        bins=rules.binette_run.output.bins,
+        quality=rules.checkm2_binette.output.tsv,
+        gunc=rules.gunc_run.output
+    output:
+        bins=directory(os.path.join(RESULTS_DIR, "bins/refine/gunc_bins")),
+        table=os.path.join(RESULTS_DIR, "bins/refine/gunc_filter.tsv")
+    log:
+        os.path.join(RESULTS_DIR, "logs/gunc_filter.log")
+    threads: 1
+    params:
+        script=os.path.join(config["work_dir"], "scripts/gunc_filter_bins.py"),
+        max_contamination=GUNC_CFG["max_contamination"]
+    message:
+        "Filtering the Binette bins on GUNC and contamination"
+    shell:
+        """
+        (date && source {PIXI_ENV_SCRIPT} && cd {config[work_dir]} && \
+        rm -rf {output.bins} && \
+        pixi r -e gunc python {params.script} --bins {input.bins} --quality {input.quality} --gunc {input.gunc} \
+            --outdir {output.bins} --table {output.table} --max-contamination {params.max_contamination} && \
         date) &> {log}
         """
 
@@ -224,7 +332,7 @@ rule rosella_refine:
 # CheckM2 on the refined bins (feeds Galah's dereplication, below).
 rule checkm2_refine:
     input:
-        bins=rules.rosella_refine.output.done,
+        bins=rules.gunc_filter.output.bins,
         db=rules.checkm_db.output[0]
     output:
         tsv=os.path.join(RESULTS_DIR, "bins/checkm2_refine/quality_report.tsv")
@@ -237,9 +345,9 @@ rule checkm2_refine:
     params:
         ext=config["checkm"]["extension"],
         db=os.path.join(DB_DIR, "CheckM2_database/uniref100.KO.1.dmnd"),
-        bins_dir=rules.rosella_refine.output.dir
+        bins_dir=rules.gunc_filter.output.bins
     message:
-        "Running CheckM2 on the Rosella-refined bins"
+        "Running CheckM2 on the GUNC-filtered bins"
     shell:
         "(date && mkdir -p $(dirname {output.tsv}) && "
         "export CHECKM2DB={params.db} && "
@@ -271,7 +379,7 @@ rule galah_prepare:
 rule galah:
     input:
         check=rules.galah_prepare.output.final,
-        bins_dir=rules.rosella_refine.output.dir
+        bins_dir=rules.gunc_filter.output.bins
     output:
         final=directory(os.path.join(RESULTS_DIR, "bins/finalbins")),
         cluster=os.path.join(RESULTS_DIR, "bins/cluster_galah.txt")
@@ -283,7 +391,7 @@ rule galah:
         comp=config["galah"]["comp"],
         cont=config["galah"]["cont"]
     message:
-        "Running Galah to dereplicate the refined bins"
+        "Running Galah to dereplicate the GUNC-filtered bins"
     shell:
         """
         (date && source {PIXI_ENV_SCRIPT} && \

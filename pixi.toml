@@ -33,6 +33,11 @@ python = "3.10.*"
 [feature.vamb.pypi-dependencies]
 vamb = ">=5.0.4"
 
+[feature.gunc]
+channels = ["conda-forge", "bioconda"]
+[feature.gunc.dependencies]
+gunc = ">=1.1.1,<2"
+
 [feature.binette]
 channels = ["conda-forge", "bioconda"]
 [feature.binette.dependencies]
@@ -154,6 +159,7 @@ pyhmmer = "<0.11"
 rosella = { features = ["rosella"], no-default-feature = true }
 vamb = { features = ["vamb"], no-default-feature = true }
 binette = { features = ["binette"], no-default-feature = true }
+gunc = { features = ["gunc"], no-default-feature = true }
 comebin = { features = ["comebin"], no-default-feature = true }
 semibin = { features = ["semibin"], no-default-feature = true }
 metacat = { features = ["metacat"], no-default-feature = true }
